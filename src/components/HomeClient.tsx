@@ -133,9 +133,23 @@ function HomeContent({ products, variants }: HomeContentProps) {
         <header className={`relative bg-gradient-to-br ${heroSlides[currentSlide].bgColor} py-12 md:py-24 px-6 overflow-hidden transition-all duration-1000`}>
           <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/dust.png')] pointer-events-none"></div>
           
-          <div className="max-w-7xl mx-auto relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            {/* Left Column: Text Content */}
-            <div className="text-center lg:text-left space-y-6 md:space-y-8 animate-in fade-in slide-in-from-left-8 duration-700">
+          {/*
+            Three blocks, ordered differently per breakpoint.
+
+            On mobile the reading order is name -> image -> price/buttons, so the
+            customer sees WHAT the product is before being asked to buy it.
+            Previously the whole text column stacked above the image column, so
+            the photo landed below both the price and the CTAs -- the one thing
+            you want people to see first was last.
+
+            On lg the original layout returns via explicit grid placement: name
+            and price/buttons stacked in column 1, image spanning both rows in
+            column 2. The DOM order stays name -> price/buttons -> image, so only
+            `order` changes, not the markup.
+          */}
+          <div className="max-w-7xl mx-auto relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 lg:items-center">
+            {/* Name */}
+            <div className="order-1 lg:col-start-1 lg:row-start-1 text-center lg:text-left space-y-5 md:space-y-6 animate-in fade-in slide-in-from-left-8 duration-700">
               <div className="inline-block bg-white/20 backdrop-blur-md px-5 py-1.5 rounded-full text-white text-[11px] font-black uppercase tracking-[0.3em] border border-white/40 shadow-sm">
                 {heroSlides[currentSlide].tag}
               </div>
@@ -144,6 +158,11 @@ function HomeContent({ products, variants }: HomeContentProps) {
                   {heroSlides[currentSlide].title}
                 </h2>
               </div>
+            </div>
+
+            {/* Price + calls to action. order-3 puts these after the image on
+                mobile; on lg they return to the left column, under the name. */}
+            <div className="order-3 lg:col-start-1 lg:row-start-2 text-center lg:text-left space-y-5 md:space-y-6 animate-in fade-in slide-in-from-left-8 duration-700">
               <div className="flex flex-col lg:flex-row items-center lg:items-end gap-2 lg:gap-4 justify-center lg:justify-start">
                 <p className="text-white text-4xl md:text-5xl font-black drop-shadow-md">
                   ${heroSlides[currentSlide].priceUsd.toFixed(2)}
@@ -202,8 +221,9 @@ function HomeContent({ products, variants }: HomeContentProps) {
               </div>
             </div>
 
-            {/* Right Column: Product Featured Carousel */}
-            <div className="relative group animate-in fade-in zoom-in-95 duration-700 delay-200">
+            {/* Image. order-2 places it between the name and the buttons on
+                mobile; on lg it spans both rows of the second column. */}
+            <div className="order-2 lg:col-start-2 lg:row-start-1 lg:row-span-2 relative group animate-in fade-in zoom-in-95 duration-700 delay-200">
               <div className="bg-white/10 backdrop-blur-sm rounded-[40px] p-4 border border-white/20 shadow-2xl relative">
                  <div className="aspect-square bg-white rounded-[32px] overflow-hidden relative shadow-inner">
                     <img 

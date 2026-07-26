@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useFavorites } from '../context/FavoritesContext';
 import CartModal from './CartModal';
 import SupportWidget from './SupportWidget';
-import { CheckCircle2, User, Heart } from 'lucide-react';
+import { CheckCircle2, User, Heart, Search, X } from 'lucide-react';
 import { getOptimizedImage } from '../lib/image';
 import { calculatePrices } from '../lib/currency';
 import { searchProducts, type SearchHit } from '../lib/search-api';
@@ -24,6 +24,15 @@ export default function StorefrontShell({ children }: StorefrontShellProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  /**
+   * Mobile only: the search input is hidden behind an icon.
+   *
+   * A 96px-wide input crammed into the header row overlapped the logo and was
+   * too small to read what you had typed. Below `sm` the icon opens a full-width
+   * bar under the header instead; from `sm` up the inline input is always shown
+   * and this is ignored.
+   */
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const { toSlug } = useStorefront();
 
@@ -247,10 +256,34 @@ export default function StorefrontShell({ children }: StorefrontShellProps) {
           {/* Right side: Search + Cart */}
           <div className="flex items-center ml-2 gap-2 flex-shrink-0">
             {/* Search bar — reference style */}
-            <div ref={searchContainerRef} className="flex relative w-24 sm:w-48 lg:w-64">
+            {/* Mobile trigger. Hidden from `sm` up, where the inline input fits. */}
+            <button
+              type="button"
+              onClick={() => setMobileSearchOpen((v) => !v)}
+              aria-label={mobileSearchOpen ? 'Cerrar busqueda' : 'Buscar'}
+              aria-expanded={mobileSearchOpen}
+              className="sm:hidden w-10 h-10 rounded-full border-2 border-[#ffd2e9] text-kawaii-pink flex items-center justify-center bg-white/70 active:scale-95 transition-transform flex-shrink-0"
+            >
+              {mobileSearchOpen ? <X size={18} /> : <Search size={18} />}
+            </button>
+
+            {/*
+              Below `sm` this is a full-width bar pinned under the header rather
+              than a box competing with the logo for space. `absolute` + inset
+              rather than a width, so it can never be wider than the screen.
+            */}
+            <div
+              ref={searchContainerRef}
+              className={`${
+                mobileSearchOpen
+                  ? 'absolute left-2 right-2 top-full mt-2 flex'
+                  : 'hidden'
+              } sm:static sm:mt-0 sm:flex sm:left-auto sm:right-auto relative sm:w-48 lg:w-64`}
+            >
               <input
                 type="text"
                 placeholder="Buscar producto..."
+                autoFocus={mobileSearchOpen}
                 className="w-full text-sm"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
@@ -277,8 +310,21 @@ export default function StorefrontShell({ children }: StorefrontShellProps) {
 
               {/* Live Dropdown Overlay */}
               {isSearchOpen && (
-                <div 
-                  className="absolute top-full right-0 mt-3 w-72 sm:w-80 md:w-96 bg-white/95 backdrop-blur-md border-2 border-[#ffd2e9] rounded-3xl shadow-[0_10px_30px_rgba(255,107,157,0.15)] overflow-hidden z-[1000] p-3 flex flex-col gap-2"
+                /*
+                  Two positioning modes.
+
+                  Mobile: `fixed` with left/right insets, so the panel is bounded
+                  by the viewport itself. It used to be `absolute right-0 w-72`
+                  anchored to a narrow box that sits ~150px in from the screen
+                  edge -- 288px of panel extending leftward from there started
+                  off-screen, which is why the results were sliced down the left.
+
+                  sm and up: back to anchoring under the input, where there is
+                  room. max-h + scroll keeps a long result list from running off
+                  the bottom on a short screen.
+                */
+                <div
+                  className="fixed left-2 right-2 top-[4.5rem] sm:absolute sm:top-full sm:left-auto sm:right-0 sm:mt-3 sm:w-80 md:w-96 max-h-[70vh] overflow-y-auto bg-white/95 backdrop-blur-md border-2 border-[#ffd2e9] rounded-3xl shadow-[0_10px_30px_rgba(255,107,157,0.15)] z-[1000] p-3 flex flex-col gap-2"
                 >
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 pb-1 border-b border-pink-50">
                     Resultados de búsqueda
