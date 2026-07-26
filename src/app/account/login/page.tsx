@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../context/AuthContext';
 import { authApi } from '../../../lib/auth-api';
+import { errorMessage } from '../../../lib/api-error';
 import { AuthCard, AuthError, authInputClass, authButtonClass } from '../../../components/account/AuthCard';
 import GoogleSignInButton from '../../../components/account/GoogleSignInButton';
 import FacebookSignInButton from '../../../components/account/FacebookSignInButton';
@@ -30,7 +31,7 @@ export default function LoginPage() {
         router.push(`/account/verify?email=${encodeURIComponent(email)}`);
         return;
       }
-      setError(err.message || 'No se pudo iniciar sesion.');
+      setError(errorMessage(err, 'No se pudo iniciar sesion.'));
     } finally {
       setLoading(false);
     }

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { authApi } from '../../../lib/auth-api';
+import { errorMessage } from '../../../lib/api-error';
 import { AuthCard, AuthError, authInputClass, authButtonClass } from '../../../components/account/AuthCard';
 import Turnstile, { turnstileEnabled } from '../../../components/Turnstile';
 
@@ -31,7 +32,7 @@ export default function RecoverPage() {
       await authApi.forgotPassword(email, turnstileToken);
       setStage('reset');
     } catch (err: any) {
-      setError(err.message || 'No se pudo enviar el codigo.');
+      setError(errorMessage(err, 'No se pudo enviar el codigo.'));
     } finally {
       setLoading(false);
     }
@@ -49,7 +50,7 @@ export default function RecoverPage() {
       await authApi.resetPassword({ email, code, password });
       router.push('/account/login');
     } catch (err: any) {
-      setError(err.message || 'No se pudo restablecer.');
+      setError(errorMessage(err, 'No se pudo restablecer.'));
     } finally {
       setLoading(false);
     }

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { authApi } from '../../../lib/auth-api';
+import { errorMessage } from '../../../lib/api-error';
 import { AuthCard, AuthError, authInputClass, authButtonClass } from '../../../components/account/AuthCard';
 import { useAuth } from '../../../context/AuthContext';
 import GoogleSignInButton from '../../../components/account/GoogleSignInButton';
@@ -39,7 +40,7 @@ export default function RegisterPage() {
       await authApi.register({ ...form, turnstileToken });
       router.push(`/account/verify?email=${encodeURIComponent(form.email)}`);
     } catch (err: any) {
-      setError(err.message || 'No se pudo crear la cuenta.');
+      setError(errorMessage(err, 'No se pudo crear la cuenta.'));
     } finally {
       setLoading(false);
     }

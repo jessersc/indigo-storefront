@@ -6,17 +6,35 @@
  * nothing in these payloads identifies an account.
  */
 
+import { ApiError, apiFetch, messageForCode, messageForStatus } from './api-error';
+
 const API_URL = process.env.NEXT_PUBLIC_INDIGO_API_URL || 'http://localhost:8787';
 
 function authJson(token: string): Record<string, string> {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 }
 
-/** Throw the server's customer-facing message rather than a generic one. */
+/**
+ * Resolve, or throw an ApiError whose message is safe to render.
+ *
+ * The shared code map wins over the server's own string, so a code the Worker
+ * sends bare (`rate_limited`, `unauthorized`) still reaches the customer as a
+ * sentence rather than as an identifier.
+ */
 async function unwrap<T>(res: Response): Promise<T> {
-  const data = (await res.json().catch(() => ({}))) as any;
-  if (!res.ok) throw new Error(data.message || data.error || 'No se pudo completar la accion.');
-  return data as T;
+  const data = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!res.ok) {
+    const code = typeof data?.error === 'string' ? data.error : '';
+    throw new ApiError({
+      code: code || `http_${res.status}`,
+      status: res.status,
+      message:
+        messageForCode(code) ??
+        (typeof data?.message === 'string' ? data.message : undefined) ??
+        messageForStatus(res.status),
+    });
+  }
+  return (data ?? {}) as T;
 }
 
 export interface AccountUser {
@@ -33,7 +51,7 @@ export async function updateProfile(
   input: { name?: string; phone?: string; cedula?: string },
   token: string,
 ): Promise<AccountUser> {
-  const res = await fetch(`${API_URL}/account/profile`, {
+  const res = await apiFetch(`${API_URL}/account/profile`, {
     method: 'PATCH',
     headers: authJson(token),
     body: JSON.stringify(input),
@@ -46,7 +64,7 @@ export async function changePassword(
   input: { currentPassword: string; newPassword: string },
   token: string,
 ): Promise<void> {
-  const res = await fetch(`${API_URL}/account/password`, {
+  const res = await apiFetch(`${API_URL}/account/password`, {
     method: 'POST',
     headers: authJson(token),
     body: JSON.stringify(input),
@@ -59,7 +77,7 @@ export async function requestEmailChange(
   input: { newEmail: string; currentPassword: string },
   token: string,
 ): Promise<void> {
-  const res = await fetch(`${API_URL}/account/email/request`, {
+  const res = await apiFetch(`${API_URL}/account/email/request`, {
     method: 'POST',
     headers: authJson(token),
     body: JSON.stringify(input),
@@ -72,7 +90,7 @@ export async function confirmEmailChange(
   input: { newEmail: string; code: string },
   token: string,
 ): Promise<{ token: string; user: AccountUser }> {
-  const res = await fetch(`${API_URL}/account/email/confirm`, {
+  const res = await apiFetch(`${API_URL}/account/email/confirm`, {
     method: 'POST',
     headers: authJson(token),
     body: JSON.stringify(input),
@@ -98,7 +116,7 @@ export interface Address {
 }
 
 export async function getAddresses(token: string): Promise<Address[]> {
-  const res = await fetch(`${API_URL}/account/addresses`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await apiFetch(`${API_URL}/account/addresses`, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) return [];
   const data = (await res.json()) as { addresses: Address[] };
   return data.addresses ?? [];
@@ -109,7 +127,7 @@ export async function saveAddress(
   token: string,
 ): Promise<Address> {
   const { id, ...fields } = input;
-  const res = await fetch(`${API_URL}/account/addresses${id ? `/${id}` : ''}`, {
+  const res = await apiFetch(`${API_URL}/account/addresses${id ? `/${id}` : ''}`, {
     method: id ? 'PUT' : 'POST',
     headers: authJson(token),
     body: JSON.stringify(fields),
@@ -119,7 +137,7 @@ export async function saveAddress(
 }
 
 export async function deleteAddress(id: string, token: string): Promise<void> {
-  const res = await fetch(`${API_URL}/account/addresses/${id}`, {
+  const res = await apiFetch(`${API_URL}/account/addresses/${id}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -137,7 +155,7 @@ export interface RefundRequest {
 }
 
 export async function getMyRefunds(token: string): Promise<RefundRequest[]> {
-  const res = await fetch(`${API_URL}/account/refunds`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await apiFetch(`${API_URL}/account/refunds`, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) return [];
   const data = (await res.json()) as { items: RefundRequest[] };
   return data.items;
@@ -147,11 +165,10 @@ export async function createRefund(
   input: { orderNumber: string; kind: 'refund' | 'replacement'; reason: string },
   token: string,
 ): Promise<void> {
-  const res = await fetch(`${API_URL}/account/refunds`, {
+  const res = await apiFetch(`${API_URL}/account/refunds`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(input),
   });
-  const data = (await res.json().catch(() => ({}))) as any;
-  if (!res.ok) throw new Error(data.message || data.error || 'No se pudo enviar la solicitud.');
+  await unwrap(res);
 }

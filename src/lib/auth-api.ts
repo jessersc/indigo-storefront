@@ -4,6 +4,8 @@
  * (localStorage) and passes it back as a Bearer token.
  */
 
+import { postJson } from './api-error';
+
 const API_URL = process.env.NEXT_PUBLIC_INDIGO_API_URL || 'http://localhost:8787';
 
 export interface AuthUser {
@@ -22,20 +24,14 @@ export interface AuthResult {
   user: AuthUser;
 }
 
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = (await res.json().catch(() => ({}))) as any;
-  if (!res.ok) {
-    const err = new Error(data.message || data.error || `Request failed (${res.status})`);
-    (err as any).code = data.error;
-    (err as any).needsVerification = data.needsVerification;
-    throw err;
-  }
-  return data as T;
+/**
+ * All auth calls go through postJson, which guarantees the thrown error carries
+ * a message fit to render. The previous version passed the server's raw string
+ * (or the bare code) straight through, so a CORS or offline failure showed the
+ * browser's "Failed to fetch" on the login form.
+ */
+function post<T>(path: string, body: unknown): Promise<T> {
+  return postJson<T>(`${API_URL}${path}`, body);
 }
 
 export const authApi = {

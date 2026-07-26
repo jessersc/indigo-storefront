@@ -3,6 +3,7 @@
 import React, { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authApi } from '../../../lib/auth-api';
+import { errorMessage } from '../../../lib/api-error';
 import { useAuth } from '../../../context/AuthContext';
 import { AuthCard, AuthError, authInputClass, authButtonClass } from '../../../components/account/AuthCard';
 
@@ -25,7 +26,7 @@ function VerifyContent() {
       setSession(result);
       router.push('/account');
     } catch (err: any) {
-      setError(err.message || 'Codigo invalido.');
+      setError(errorMessage(err, 'Codigo invalido.'));
     } finally {
       setLoading(false);
     }
@@ -38,7 +39,7 @@ function VerifyContent() {
       await authApi.resendCode(email);
       setInfo('Codigo reenviado. Revisa tu correo.');
     } catch (err: any) {
-      setError(err.message || 'No se pudo reenviar.');
+      setError(errorMessage(err, 'No se pudo reenviar.'));
     }
   };
 
