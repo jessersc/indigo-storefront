@@ -6,7 +6,7 @@ import { ShoppingCart, Heart } from 'lucide-react';
 import productsData from '../lib/products.json';
 import variantsData from '../lib/variants.json';
 import {
-  toDisplayProduct, visibleProducts,
+  toDisplayProduct, visibleProducts, newestProductIds,
   type CatalogProduct, type CatalogVariant, type DisplayProduct,
 } from '../lib/catalog';
 import { HIDE_PRODUCTS_WITHOUT_IMAGE, useStorefront } from '../context/StorefrontContext';
@@ -57,7 +57,11 @@ export default function ProductGrid({
   // dashboard reprices the grid without a rebuild.
   const products: DisplayProduct[] = useMemo(() => {
     const list = HIDE_PRODUCTS_WITHOUT_IMAGE ? visibleProducts(rawProducts) : rawProducts;
-    return list.map((p) => toDisplayProduct(p, rates));
+    // Computed over the FULL catalogue, not the filtered view: "new" should mean
+    // the same product wherever it appears. Deciding per-view would badge the
+    // 20 newest of whatever category happened to be open.
+    const newest = newestProductIds(rawProducts);
+    return list.map((p) => toDisplayProduct(p, rates, newest));
   }, [rawProducts, rates]);
 
   const handleBuyNow = (e: React.MouseEvent, product: any) => {
@@ -129,7 +133,12 @@ export default function ProductGrid({
                 -{Math.round((1 - (product.USD / product.CompareAtPrice)) * 100)}%
               </span>
             )}
-            {!product.CompareAtPrice && (
+            {/*
+              Recency, not "happens to have no discount". A product only earns
+              this if it is among the newest in the catalogue, so the badge keeps
+              meaning something once most of the shelf is not on sale.
+            */}
+            {!product.CompareAtPrice && product.IsNew && (
               <span className="bg-kawaii-yellow text-kawaii-dark text-[10px] font-black px-3 py-1 rounded-full shadow-sm uppercase tracking-widest">
                 Nuevo ✨
               </span>

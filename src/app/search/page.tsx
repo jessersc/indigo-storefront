@@ -106,7 +106,13 @@ function SearchContent() {
                     -{Math.round((1 - (product.USD / product.CompareAtPrice)) * 100)}%
                   </span>
                 )}
-                {!product.CompareAtPrice && (
+                {/*
+                  Gated on IsNew like the grid. Search receives only the matching
+                  rows, never the whole catalogue, so it cannot know the global
+                  newest-20 and this stays false here -- which beats the old
+                  behaviour of calling every result "Nuevo".
+                */}
+                {!product.CompareAtPrice && product.IsNew && (
                   <span className="bg-kawaii-yellow text-kawaii-dark text-[10px] font-black px-3 py-1 rounded-full shadow-sm uppercase tracking-widest">
                     Nuevo ✨
                   </span>

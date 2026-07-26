@@ -79,6 +79,8 @@ export default function TaxonomyCarousel({ title, items, basePath }: TaxonomyCar
   const scroller = useRef<HTMLDivElement>(null);
   /** Set while the pointer/focus is inside, or briefly after an arrow press. */
   const [paused, setPaused] = useState(false);
+  /** Which edges have content beyond them, so the fade only shows where it means something. */
+  const [edges, setEdges] = useState({ left: false, right: true });
   /** False while the strip is scrolled off-screen, so it idles in the background. */
   const [visible, setVisible] = useState(false);
   const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -120,6 +122,31 @@ export default function TaxonomyCarousel({ title, items, basePath }: TaxonomyCar
     if (resumeTimer.current) clearTimeout(resumeTimer.current);
     resumeTimer.current = setTimeout(() => setPaused(false), RESUME_AFTER_INPUT_MS);
   };
+
+  /**
+   * Track which edges still have content past them. The strip is clipped by its
+   * own box, so without a cue the cut-off card at the right just reads as a
+   * broken layout rather than "keep scrolling".
+   */
+  const syncEdges = useCallback(() => {
+    const el = scroller.current;
+    if (!el) return;
+    setEdges({
+      left: el.scrollLeft > 4,
+      right: el.scrollLeft + el.clientWidth < el.scrollWidth - 4,
+    });
+  }, []);
+
+  useEffect(() => {
+    syncEdges();
+    const el = scroller.current;
+    if (!el) return;
+    // Also on resize: how much fits changes with the viewport, and so does
+    // whether there is anything left to scroll to.
+    const ro = new ResizeObserver(syncEdges);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [syncEdges, items]);
 
   // Only animate while actually on screen. Without this the timer keeps firing
   // for a carousel far below the fold, scrolling it for nobody.
@@ -179,12 +206,29 @@ export default function TaxonomyCarousel({ title, items, basePath }: TaxonomyCar
       */}
       <div
         ref={scroller}
+        onScroll={syncEdges}
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
         onFocusCapture={() => setPaused(true)}
         onBlurCapture={() => setPaused(false)}
         onTouchStart={() => setPaused(true)}
-        className="flex gap-4 overflow-x-auto pb-3 snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        style={{
+          // Fade whichever edge still has content behind it. Pure CSS, so it
+          // costs nothing and degrades to a plain clip where mask is unsupported.
+          maskImage: `linear-gradient(to right, ${
+            edges.left ? 'transparent 0, #000 40px' : '#000 0'
+          }, ${edges.right ? '#000 calc(100% - 48px), transparent 100%' : '#000 100%'})`,
+          WebkitMaskImage: `linear-gradient(to right, ${
+            edges.left ? 'transparent 0, #000 40px' : '#000 0'
+          }, ${edges.right ? '#000 calc(100% - 48px), transparent 100%' : '#000 100%'})`,
+        }}
+        /*
+         * -mx-6 px-6 cancels the page gutter for the track only. Without it the
+         * strip stops at the 24px padding line and the last card is sliced by an
+         * invisible edge mid-content; with it, cards run to the true screen edge
+         * while the first and last still line up with the heading above.
+         */
+        className="flex gap-4 overflow-x-auto pb-3 -mx-6 px-6 scroll-px-6 snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
         {items.map((item) => (
           <Link

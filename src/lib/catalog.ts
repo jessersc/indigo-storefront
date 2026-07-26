@@ -156,6 +156,37 @@ export interface DisplayProduct {
   Description: string;
   Stock: number;
   StockStatus: string;
+  /**
+   * True only for the most recently added products -- see NEW_PRODUCT_COUNT.
+   * Decided across the whole catalogue, so it cannot be derived inside
+   * toDisplayProduct, which only ever sees one row.
+   */
+  IsNew: boolean;
+}
+
+/** How many of the newest products carry the "Nuevo" badge. */
+export const NEW_PRODUCT_COUNT = 20;
+
+/**
+ * Ids of the N most recently created products.
+ *
+ * The badge used to be rendered as the else-branch of the discount badge, so
+ * every product that simply wasn't on sale claimed to be new -- which, with no
+ * discounts configured, meant all 806 of them.
+ *
+ * Rows with no created_at sort last rather than first: a missing timestamp is
+ * unknown, not brand new.
+ */
+export function newestProductIds(
+  products: CatalogProduct[],
+  count = NEW_PRODUCT_COUNT,
+): Set<string> {
+  const stamped = products.map((p) => ({
+    id: String(p.id),
+    at: p.created_at ? new Date(p.created_at).getTime() : Number.NEGATIVE_INFINITY,
+  }));
+  stamped.sort((a, b) => b.at - a.at);
+  return new Set(stamped.slice(0, count).map((p) => p.id));
 }
 
 /**
@@ -191,6 +222,8 @@ function imageFor(p: CatalogProduct): string {
 export function toDisplayProduct(
   p: CatalogProduct,
   rates: ExchangeRates,
+  /** From newestProductIds(). Omitted means nothing is badged as new. */
+  newestIds?: Set<string>,
 ): DisplayProduct {
   // base_price_usd is the cost basis (usd_real), never the shelf price. Both
   // currencies come from one CurrencyEngine call so they cannot disagree.
@@ -208,6 +241,7 @@ export function toDisplayProduct(
     Description: p.description || '',
     Stock: p.stock ?? 10,
     StockStatus: p.stock_status || 'auto',
+    IsNew: newestIds?.has(String(p.id)) ?? false,
   };
 }
 
