@@ -162,6 +162,16 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
   // ── Step State ──
   const [step, setStep] = useState<Step>('form');
   const [orderNumber, setOrderNumber] = useState('');
+  /**
+   * Whether the order number may be SHOWN to the customer.
+   *
+   * The number is generated as soon as the contact form is submitted, because
+   * the gateways need a reference to quote. But showing it that early hands out
+   * a number for an order that does not exist yet: abandon the payment and the
+   * customer is holding a reference support cannot find. It becomes visible only
+   * once ensureOrderSaved has persisted the order.
+   */
+  const [orderRegistered, setOrderRegistered] = useState(false);
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
 
   // Which order number has already been persisted, so re-entering a payment
@@ -484,6 +494,9 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
 
     setStockShortfalls([]);
     savedOrderRef.current = orderNum;
+    // The number is now a real order in the database, so it is finally safe to
+    // put in front of the customer. See orderRegistered.
+    setOrderRegistered(true);
     setStockWarnings(result.stockWarnings ?? []);
     setContactMessage(result.contactMessage ?? '');
     return true;
@@ -633,6 +646,10 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
     }
     const num = generateOrderNumber();
     setOrderNumber(num);
+    // A fresh number is not a saved order. Without this reset, going back and
+    // resubmitting the form would display the NEW number immediately, because
+    // the flag was still true from the previous attempt.
+    setOrderRegistered(false);
     setPaymentError('');
     setStep('payment');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -806,7 +823,7 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
           <p className="text-slate-500 font-bold">Tu pedido ha sido procesado exitosamente ✨</p>
         </div>
 
-        {orderNumber && (
+        {orderRegistered && orderNumber && (
           <div className="bg-[#fff6fa] rounded-3xl border border-[#ffe0ef] p-6 space-y-2">
             <p className="text-xs text-slate-400 font-bold tracking-widest uppercase">Número de orden</p>
             <div className="flex items-center justify-center gap-3">
@@ -881,7 +898,7 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
           </div>
         )}
 
-        {orderNumber && (
+        {orderRegistered && orderNumber && (
           <div className="bg-[#fff6fa] rounded-3xl border border-[#ffe0ef] p-6 space-y-2">
             <p className="text-xs text-slate-400 font-bold tracking-widest uppercase">Número de orden</p>
             <div className="flex items-center justify-center gap-3">
@@ -942,11 +959,20 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
           <ArrowLeft size={20} /> Volver al formulario
         </button>
 
-        {/* Order number badge */}
-        <div className="flex items-center justify-between bg-[#fff6fa] rounded-2xl px-5 py-3 border border-[#ffe0ef]">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Orden</span>
-          <span className="font-bubble text-kawaii-pink text-lg">{orderNumber}</span>
-        </div>
+        {/*
+          Order number badge — only once the order actually exists.
+
+          This used to render as soon as the customer reached the payment step,
+          which meant a number was handed out for an order that had not been
+          saved. Abandon the payment there and the customer walks away quoting a
+          reference no one can look up. It now appears after ensureOrderSaved.
+        */}
+        {orderRegistered && orderNumber && (
+          <div className="flex items-center justify-between bg-[#fff6fa] rounded-2xl px-5 py-3 border border-[#ffe0ef]">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Orden</span>
+            <span className="font-bubble text-kawaii-pink text-lg">{orderNumber}</span>
+          </div>
+        )}
 
         {/* Order Summary */}
         <OrderSummaryCard />
