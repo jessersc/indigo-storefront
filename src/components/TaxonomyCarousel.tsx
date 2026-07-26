@@ -224,12 +224,15 @@ export default function TaxonomyCarousel({ title, items, basePath }: TaxonomyCar
         style={{
           // Fade whichever edge still has content behind it. Pure CSS, so it
           // costs nothing and degrades to a plain clip where mask is unsupported.
+          // ~a full card wide. A narrow fade still reads as a hard slice through
+          // the last card; at this width the partial card visibly dissolves and
+          // reads as "there is more", which is the whole point.
           maskImage: `linear-gradient(to right, ${
-            edges.left ? 'transparent 0, #000 40px' : '#000 0'
-          }, ${edges.right ? '#000 calc(100% - 48px), transparent 100%' : '#000 100%'})`,
+            edges.left ? 'transparent 0, #000 72px' : '#000 0'
+          }, ${edges.right ? '#000 calc(100% - 96px), transparent 100%' : '#000 100%'})`,
           WebkitMaskImage: `linear-gradient(to right, ${
-            edges.left ? 'transparent 0, #000 40px' : '#000 0'
-          }, ${edges.right ? '#000 calc(100% - 48px), transparent 100%' : '#000 100%'})`,
+            edges.left ? 'transparent 0, #000 72px' : '#000 0'
+          }, ${edges.right ? '#000 calc(100% - 96px), transparent 100%' : '#000 100%'})`,
         }}
         /*
          * -mx-6 px-6 cancels the page gutter for the track only. Without it the
