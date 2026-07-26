@@ -77,6 +77,41 @@ export function validatePhone(value: string, { required = true } = {}): string |
   return null;
 }
 
+/**
+ * Venezuelan mobile numbers, in the local form the banks expect.
+ *
+ * Pago Movil is settled between two Venezuelan mobile lines, so unlike the
+ * general `validatePhone` above this is deliberately strict: the number has to
+ * be one that can actually receive a C2P debit. Only these five prefixes are
+ * issued to mobile lines (Digitel, Movistar, Movilnet).
+ *
+ * Returned in `04121234567` form because that is what Mercantil's C2P endpoint
+ * takes — NOT E.164. Sending it a +58 number silently fails to match an
+ * account.
+ */
+const VE_MOBILE_PREFIXES = ['0412', '0414', '0416', '0424', '0426'];
+
+export function normalizeVenezuelanMobile(value: string): string {
+  let v = (value ?? '').trim().replace(/[\s().+-]/g, '');
+  if (v.startsWith('00')) v = v.slice(2);
+  // Strip a country code however it was written, then restore the trunk 0.
+  if (v.startsWith('58')) v = `0${v.slice(2)}`;
+  else if (v.length === 10 && !v.startsWith('0')) v = `0${v}`;
+  return v;
+}
+
+export function validateVenezuelanMobile(value: string): string | null {
+  const raw = (value ?? '').trim();
+  if (!raw) return 'El telefono es requerido.';
+  const v = normalizeVenezuelanMobile(raw);
+  if (!/^\d+$/.test(v)) return 'El telefono debe tener solo numeros.';
+  if (v.length !== 11) return 'El telefono debe tener 11 digitos, por ejemplo 04121234567.';
+  if (!VE_MOBILE_PREFIXES.includes(v.slice(0, 4))) {
+    return `El telefono debe empezar con ${VE_MOBILE_PREFIXES.join(', ')}.`;
+  }
+  return null;
+}
+
 /** Non-empty after trimming, with a field name for the message. */
 export function validateRequired(value: string, label: string): string | null {
   return (value ?? '').trim() ? null : `${label} es requerido.`;

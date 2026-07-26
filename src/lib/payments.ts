@@ -128,6 +128,12 @@ const API_URL = process.env.NEXT_PUBLIC_INDIGO_API_URL || 'http://localhost:8787
 export interface SaveOrderOptions {
   // When logged in, links the order to the account.
   token?: string | null;
+  /**
+   * Cloudflare Turnstile proof. Creating an order takes a 2-hour stock hold, so
+   * this endpoint is worth gating: without it a script can reserve the whole
+   * catalogue in a loop. Ignored by the Worker when Turnstile is unconfigured.
+   */
+  turnstileToken?: string;
 }
 
 /** An item this order pushed to low/no stock, per the Worker. */
@@ -203,6 +209,7 @@ export async function saveOrderToD1(
         priceUsd: item.priceUsd,
         priceBs: item.priceBs,
       })),
+      turnstileToken: opts.turnstileToken,
     };
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };

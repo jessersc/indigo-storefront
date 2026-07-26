@@ -7,6 +7,8 @@ import { useAuth } from '../context/AuthContext';
 import { calculatePrices } from '../lib/currency';
 import CryptoPayment from './CryptoPayment';
 import CasheaPayment from './CasheaPayment';
+import Turnstile, { turnstileEnabled } from './Turnstile';
+import { validateCedula, validateEmail, validateVenezuelanMobile } from '../lib/validation';
 import {
   generateOrderNumber,
   generateWhatsAppLink,
@@ -219,6 +221,13 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
   // ── Payment Processing State ──
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentError, setPaymentError] = useState('');
+  /**
+   * Turnstile proof for creating the order. Held here rather than per payment
+   * method because every method funnels through ensureOrderSaved, which is the
+   * call that actually reserves stock. Empty string when the widget has not
+   * solved yet or the token expired; the component re-challenges on its own.
+   */
+  const [turnstileToken, setTurnstileToken] = useState('');
 
   // ── PayPal State ──
   const paypalContainerRef = useRef<HTMLDivElement>(null);
@@ -482,8 +491,18 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
   const ensureOrderSaved = async (orderNum: string): Promise<boolean> => {
     if (savedOrderRef.current === orderNum) return true;
 
+    // Only enforced when Turnstile is actually configured; otherwise the widget
+    // renders nothing and the Worker skips the check, so requiring a token here
+    // would deadlock local development.
+    if (turnstileEnabled() && !turnstileToken) {
+      setPaymentError(
+        'Estamos verificando que eres una persona. Espera un momento e intenta de nuevo.',
+      );
+      return false;
+    }
+
     const order = buildOrder(orderNum);
-    const result = await saveOrderToD1(order, { token });
+    const result = await saveOrderToD1(order, { token, turnstileToken });
     if (!result.success) {
       setStockShortfalls(result.shortfalls ?? []);
       setPaymentError(
@@ -584,23 +603,48 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
 
   const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-  const validateForm = () => {
-    if (!formData.name.trim()) return false;
-    if (!formData.id.trim() || !/^\d+$/.test(formData.id.trim())) return false;
-    if (!formData.email.trim() || !EMAIL_RE.test(formData.email.trim())) return false;
-    if (formData.deliveryMethod === 'delivery-home') {
-      if (!formData.phone.trim()) return false;
-      if (!formData.address.trim()) return false;
+  /**
+   * Returns a specific Spanish message, or null when the form is fine.
+   *
+   * Replaces a boolean + one generic "completa todos los campos" alert, which
+   * gave no clue which field was wrong. Cedula is now length-checked (it only
+   * had to be digits, so "1" passed), and Pago Movil additionally requires a
+   * real Venezuelan mobile, because C2P debits that line -- a number that
+   * cannot receive the debit is a guaranteed decline, and there is no reason to
+   * spend a bank call discovering that.
+   */
+  const formValidationError = (): string | null => {
+    if (!formData.name.trim()) return 'Escribe tu nombre completo.';
+
+    const cedulaError = validateCedula(formData.id);
+    if (cedulaError) return cedulaError;
+
+    const emailError = validateEmail(formData.email);
+    if (emailError) return emailError;
+
+    if (formData.deliveryMethod !== 'pickup-store' && !formData.phone.trim()) {
+      return 'El telefono es requerido para el envio.';
+    }
+    if (formData.deliveryMethod === 'delivery-home' && !formData.address.trim()) {
+      return 'Escribe la direccion de entrega.';
     }
     if (formData.deliveryMethod === 'delivery-national') {
-      if (!formData.phone.trim()) return false;
-      if (!formData.courier) return false;
-      if (!formData.state) return false;
-      if (!formData.office) return false;
+      if (!formData.courier) return 'Elige el courier.';
+      if (!formData.state) return 'Elige el estado.';
+      if (!formData.office) return 'Elige la oficina.';
     }
-    if (!formData.paymentMethod) return false;
-    return true;
+
+    if (!formData.paymentMethod) return 'Elige un metodo de pago.';
+
+    if (formData.paymentMethod === 'pago-movil') {
+      const mobileError = validateVenezuelanMobile(formData.phone);
+      if (mobileError) return `Pago Movil: ${mobileError}`;
+    }
+
+    return null;
   };
+
+  const validateForm = () => formValidationError() === null;
 
   const isFieldInvalid = (fieldName: string) => {
     if (!isSubmitted) return false;
@@ -640,8 +684,9 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitted(true);
-    if (!validateForm()) {
-      alert('Por favor completa todos los campos requeridos');
+    const validationError = formValidationError();
+    if (validationError) {
+      alert(validationError);
       return;
     }
     const num = generateOrderNumber();
@@ -727,7 +772,11 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
       if (data.success) {
         await handlePaymentSuccess(formData.paymentMethod, data.transactionId);
       } else {
-        setPaymentError(data.message || data.error || 'Pago rechazado por el banco.');
+        // `error` before `message`: the route puts the bank's specific reason
+        // (or the field that failed validation) in `error` and a generic "Pago
+        // rechazado" in `message`, so preferring `message` told the customer
+        // nothing they could act on.
+        setPaymentError(data.error || data.message || 'Pago rechazado por el banco.');
       }
     } catch (err: any) {
       setPaymentError('Error procesando el pago. Intenta de nuevo.');
@@ -976,6 +1025,19 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
 
         {/* Order Summary */}
         <OrderSummaryCard />
+
+        {/*
+          Bot check, solved while the customer reads the summary so it is
+          already done by the time they press pay. Renders nothing at all when
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY is unset. It sits on the payment step
+          rather than the contact form because the token is short-lived (~5 min)
+          and this is the step that ends in ensureOrderSaved.
+        */}
+        {turnstileEnabled() && (
+          <div className="space-y-2">
+            <Turnstile onToken={setTurnstileToken} />
+          </div>
+        )}
 
         {/* Payment error */}
         {paymentError && (

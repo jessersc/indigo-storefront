@@ -7,6 +7,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { confirmPaymentWithWorker, failPaymentWithWorker } from '../../../lib/confirm-payment';
+import {
+  normalizeCedula,
+  validateCedula,
+  normalizeVenezuelanMobile,
+  validateVenezuelanMobile,
+} from '../../../lib/validation';
+import { isPaymentSuccessful } from '../../../lib/mercantil-result';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -208,22 +215,8 @@ async function processCardPayment(
 // Success detection (from original indigo code)
 // ─────────────────────────────────────────────
 
-function isPaymentSuccessful(result: any): boolean {
-  if (result?.error_list?.length > 0) return false;
-  if (result?.status?.errorTech || result?.status?.errorCode) return false;
-
-  return !!(
-    (result?.transaction_response?.trx_status === 'approved') ||
-    (result?.transaction_response?.trx_internal_status === '0000') ||
-    (result?.infoMsg?.guId) ||
-    result?.status === 'success' ||
-    result?.response_code === '00' ||
-    result?.codigo === '00' ||
-    result?.code === '00' ||
-    result?.code === 0 ||
-    (result?.transaction?.status === 'approved')
-  );
-}
+// Approval detection lives in ../../../lib/mercantil-result so it can be tested
+// without the Next runtime. See that file for why it is strict.
 
 // ─────────────────────────────────────────────
 // Main Route Handler
@@ -265,6 +258,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    /*
+      Validate identity fields BEFORE spending a call on the bank.
+
+      Previously anything non-empty was forwarded, encrypted, and sent — so a
+      made-up cedula and phone produced a real request whose reply was then
+      misread as an approval. Rejecting malformed input here removes the whole
+      class of problem: the bank is only ever asked about numbers that could
+      plausibly exist, and the customer gets a precise message instead of a
+      generic decline.
+    */
+    const cedulaError = validateCedula(body.customerCedula);
+    if (cedulaError) {
+      return NextResponse.json(
+        { success: false, error: cedulaError, field: 'customerCedula' },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+    body.customerCedula = normalizeCedula(body.customerCedula);
+
+    const amountNumber = Number(body.amount);
+    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+      return NextResponse.json(
+        { success: false, error: 'El monto no es valido.', field: 'amount' },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
     let result: any;
 
     switch (body.paymentMethod) {
@@ -281,6 +301,27 @@ export async function POST(req: NextRequest) {
             { success: false, error: 'Pago Móvil requires customerPhone and otpCode' },
             { status: 400, headers: corsHeaders }
           );
+        }
+        {
+          // C2P settles between two Venezuelan mobile lines, so the number has
+          // to be one that can actually receive the debit — and in local
+          // `04121234567` form, which is what Mercantil matches on. An E.164
+          // (+58...) value silently matches no account.
+          const phoneError = validateVenezuelanMobile(body.customerPhone);
+          if (phoneError) {
+            return NextResponse.json(
+              { success: false, error: phoneError, field: 'customerPhone' },
+              { status: 400, headers: corsHeaders }
+            );
+          }
+          body.customerPhone = normalizeVenezuelanMobile(body.customerPhone);
+
+          if (!/^\d{4,8}$/.test(String(body.otpCode).trim())) {
+            return NextResponse.json(
+              { success: false, error: 'La clave temporal no es valida.', field: 'otpCode' },
+              { status: 400, headers: corsHeaders }
+            );
+          }
         }
         result = await processPagoMovil(body, clientIP, browserAgent);
         break;
@@ -374,16 +415,21 @@ export async function POST(req: NextRequest) {
       // human-readable reason.
       console.error('Mercantil declined:', body.orderNumber, JSON.stringify(result));
 
+      // 402, not 400. A declined payment is a well-formed request that the bank
+      // refused — returning 400 made every ordinary decline look like a client
+      // bug in the browser console, which is what "POST /api/mercantil 400"
+      // was during testing.
       return NextResponse.json(
         {
           success: false,
           message: 'Pago rechazado',
           error:
             result?.status?.descTech ??
+            result?.status?.descUser ??
             result?.error_list?.[0]?.description ??
-            'Payment rejected by bank',
+            'El banco rechazo el pago. Verifica tus datos e intenta de nuevo.',
         },
-        { status: 400, headers: corsHeaders }
+        { status: 402, headers: corsHeaders }
       );
     }
   } catch (err: any) {
