@@ -1,0 +1,136 @@
+[
+  {
+    "results": [
+      {
+        "id": "009e788a-040c-4277-9feb-350823087ca6",
+        "name": "Shipping Charges Message",
+        "type": "text/plain",
+        "url": null,
+        "category": "messages",
+        "asset_type": "shipping_charges_message",
+        "social_platform": null,
+        "is_active": 1,
+        "html_content": "Posibles cargos de envio: $4.00 - $10.00",
+        "display_order": 0,
+        "created_at": "2026-05-03 04:40:14",
+        "updated_at": "2026-05-03 04:40:14"
+      },
+      {
+        "id": "0d934460-b09d-49e0-991d-53c1d74ff411",
+        "name": "WhatsApp Icon",
+        "type": "image/png",
+        "url": "https://res.cloudinary.com/dv2nnkkdr/image/upload/v1764484868/indigo/hkhjx5cgsczcukoj2puw.png",
+        "category": "icons",
+        "asset_type": "social_icon",
+        "social_platform": "whatsapp",
+        "is_active": 1,
+        "html_content": null,
+        "display_order": 0,
+        "created_at": "2026-05-03 04:40:14",
+        "updated_at": "2026-05-03 04:40:14"
+      },
+      {
+        "id": "2acce92a-d47c-41c7-9f93-cf532d144a48",
+        "name": "Favicon",
+        "type": "image/png",
+        "url": "https://res.cloudinary.com/dv2nnkkdr/image/upload/v1764504558/indigo/kvxnguewufnk91yzhweu.png",
+        "category": "icons",
+        "asset_type": "favicon",
+        "social_platform": null,
+        "is_active": 1,
+        "html_content": null,
+        "display_order": 0,
+        "created_at": "2026-05-03 04:40:14",
+        "updated_at": "2026-05-03 04:40:14"
+      },
+      {
+        "id": "43d1ba8d-31f5-4a3e-a359-a4f1934c8795",
+        "name": "Google Maps Icon",
+        "type": "image/png",
+        "url": "https://res.cloudinary.com/dv2nnkkdr/image/upload/v1764555095/indigo/hsnpod82wxzbixdp2di7.png",
+        "category": "icons",
+        "asset_type": "social_icon",
+        "social_platform": "google_maps",
+        "is_active": 1,
+        "html_content": null,
+        "display_order": 0,
+        "created_at": "2026-05-03 04:40:14",
+        "updated_at": "2026-05-03 04:40:14"
+      },
+      {
+        "id": "538ca860-01c3-4742-9207-fb9e8266580b",
+        "name": "TikTok Icon",
+        "type": "image/png",
+        "url": "https://res.cloudinary.com/dv2nnkkdr/image/upload/v1764484832/indigo/dagrzovkc7ezxzxngbbq.png",
+        "category": "icons",
+        "asset_type": "social_icon",
+        "social_platform": "tiktok",
+        "is_active": 1,
+        "html_content": null,
+        "display_order": 0,
+        "created_at": "2026-05-03 04:40:14",
+        "updated_at": "2026-05-03 04:40:14"
+      },
+      {
+        "id": "6b12d785-89ae-4f67-889f-a38b447dba32",
+        "name": "Logo",
+        "type": "image/png",
+        "url": "https://res.cloudinary.com/dv2nnkkdr/image/upload/v1764504542/indigo/r14c9cmwlti8hb7yvwrk.png",
+        "category": "icons",
+        "asset_type": "logotipo",
+        "social_platform": null,
+        "is_active": 1,
+        "html_content": null,
+        "display_order": 0,
+        "created_at": "2026-05-03 04:40:14",
+        "updated_at": "2026-05-03 04:40:14"
+      },
+      {
+        "id": "ada9fbe8-809a-410e-ba83-9e7ef7e9aabe",
+        "name": "Shipping Price Message",
+        "type": "text/plain",
+        "url": null,
+        "category": "messages",
+        "asset_type": "shipping_price_message",
+        "social_platform": null,
+        "is_active": 1,
+        "html_content": "Precio de envio varia segun ",
+        "display_order": 0,
+        "created_at": "2026-05-03 04:40:14",
+        "updated_at": "2026-05-03 04:40:14"
+      },
+      {
+        "id": "e6b2c903-7808-4435-9821-4ae9d5f96141",
+        "name": "Header Banner",
+        "type": "image/png",
+        "url": null,
+        "category": "icons",
+        "asset_type": "header",
+        "social_platform": null,
+        "is_active": 1,
+        "html_content": "🌟 ¡¡ SE ACEPTAN PAGOS CON CASHEA A!! 🌟",
+        "display_order": 0,
+        "created_at": "2026-05-03 04:40:14",
+        "updated_at": "2026-05-03 04:40:14"
+      },
+      {
+        "id": "eb854be5-9dc5-40c4-8a2c-a78ba32e316c",
+        "name": "Instagram Icon",
+        "type": "image/png",
+        "url": "https://res.cloudinary.com/dv2nnkkdr/image/upload/v1764484854/indigo/slixho9075suw94iwuzw.png",
+        "category": "icons",
+        "asset_type": "social_icon",
+        "social_platform": "instagram",
+        "is_active": 1,
+        "html_content": null,
+        "display_order": 0,
+        "created_at": "2026-05-03 04:40:14",
+        "updated_at": "2026-05-03 04:40:14"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "duration": 0
+    }
+  }
+]

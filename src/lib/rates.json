@@ -1,0 +1,17 @@
+[
+  {
+    "results": [
+      {
+        "id": 1,
+        "bcv_fijo": 109.77,
+        "paralelo_fijo": 170,
+        "bcv_diario": 398.75,
+        "updated_at": "2026-05-03 04:59:48"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "duration": 1
+    }
+  }
+]
