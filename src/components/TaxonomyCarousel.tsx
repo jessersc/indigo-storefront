@@ -235,12 +235,20 @@ export default function TaxonomyCarousel({ title, items, basePath }: TaxonomyCar
           }, ${edges.right ? '#000 calc(100% - 96px), transparent 100%' : '#000 100%'})`,
         }}
         /*
-         * -mx-6 px-6 cancels the page gutter for the track only. Without it the
-         * strip stops at the 24px padding line and the last card is sliced by an
-         * invisible edge mid-content; with it, cards run to the true screen edge
-         * while the first and last still line up with the heading above.
+         * Padding on ALL FOUR sides, and the vertical padding is not cosmetic.
+         *
+         * `overflow-x-auto` does not leave the other axis alone: per CSS, when
+         * one axis is not `visible` the other computes to `auto` too. So this
+         * box clips vertically as well, and with padding-top:0 it was slicing
+         * the cards' pink drop shadow and the 4px hover lift clean off. pt-4
+         * gives the lift and the shadow's upward spread room; pb-5 covers the
+         * shadow's 4px downward offset plus its 14px blur.
+         *
+         * -mx-6 px-6 cancels the page gutter horizontally, so cards run to the
+         * true screen edge instead of stopping at the 24px padding line, while
+         * the first card still lines up with the heading above.
          */
-        className="flex gap-4 overflow-x-auto pb-3 -mx-6 px-6 scroll-px-6 snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        className="flex gap-4 overflow-x-auto pt-4 pb-5 -mx-6 px-6 scroll-px-6 snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
         {items.map((item) => (
           <Link
