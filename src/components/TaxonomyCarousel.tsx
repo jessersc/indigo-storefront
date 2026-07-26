@@ -81,8 +81,17 @@ export default function TaxonomyCarousel({ title, items, basePath }: TaxonomyCar
   const [paused, setPaused] = useState(false);
   /** Which edges have content beyond them, so the fade only shows where it means something. */
   const [edges, setEdges] = useState({ left: false, right: true });
-  /** False while the strip is scrolled off-screen, so it idles in the background. */
-  const [visible, setVisible] = useState(false);
+  /**
+   * Whether the strip is on screen. Starts TRUE and is only ever turned off by
+   * the observer below.
+   *
+   * Starting false would make the whole feature depend on IntersectionObserver
+   * delivering a callback: anywhere it is unavailable, throttled or silent, the
+   * carousel would simply never move and look broken. Off-screen animation is a
+   * battery optimisation, so the safe default is to animate and let the observer
+   * switch it off, not the reverse.
+   */
+  const [visible, setVisible] = useState(true);
   const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
