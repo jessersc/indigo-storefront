@@ -65,6 +65,18 @@ function fallbackVideos(): Video[] {
   return [...tiktok, ...instagram];
 }
 
+/**
+ * Offline snapshot, used when the Worker cannot be reached within
+ * FETCH_TIMEOUT_MS.
+ *
+ * It must only carry STRUCTURAL chrome -- logo, favicon, social icons. Never
+ * promotional copy. `assets.json` used to include a `header` banner reading
+ * "SE ACEPTAN PAGOS CON CASHEA", captured in May 2026; because this fallback
+ * fires on any slow response, that dead promotion reappeared on the live store
+ * at random, months after it had been removed from the database, and no amount
+ * of editing in the dashboard could get rid of it. Anything time-sensitive
+ * belongs in D1 only, where turning it off actually turns it off.
+ */
 function staticFallback(): StoreConfig {
   const assets = (((assetsRaw as unknown) as { results?: Asset[] }[])[0]?.results) ?? [];
   const rates =

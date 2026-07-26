@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useFavorites } from '../context/FavoritesContext';
 import CartModal from './CartModal';
 import SupportWidget from './SupportWidget';
-import { CheckCircle2, User, Heart, Search, X, Package, Tag, ChevronDown } from 'lucide-react';
+import { CheckCircle2, User, Heart, Search, X, Package, Tag, ChevronDown, Settings } from 'lucide-react';
 import { getOptimizedImage } from '../lib/image';
 import { calculatePrices } from '../lib/currency';
 import { searchProducts, type SearchHit } from '../lib/search-api';
@@ -98,7 +98,17 @@ export default function StorefrontShell({ children }: StorefrontShellProps) {
   const ttUrl = config.social_tiktok_url || 'https://www.tiktok.com/@indig0.store';
   const waUrl = config.social_whatsapp_url || 'https://www.whatsapp.com/catalog/584128503608/?app_absent=0';
 
-  const headerBanner = assets.find(a => a.asset_type === 'header')?.html_content || '🌟 BIENVENIDO A INDIGO 🌟';
+  /**
+   * Promo banner. Both the text and whether it shows at all are owned by the
+   * dashboard: Imagenes y banner -> "Banner superior" writes an asset with
+   * asset_type='header', and /config only returns assets with is_active = 1.
+   *
+   * There is deliberately NO fallback string. The previous default meant the
+   * banner could never actually be turned off -- pressing "Deactivate" in the
+   * dashboard just swapped the operator's message for a hardcoded one, so the
+   * off state was unreachable and the store always shouted something.
+   */
+  const headerBanner = assets.find(a => a.asset_type === 'header')?.html_content?.trim() || '';
   const logoUrl = assets.find(a => a.asset_type === 'logotipo')?.url || '/assets/logotipo.png';
   const instagramIconUrl = assets.find(a => a.social_platform === 'instagram')?.url || '/assets/ig.png';
   const tiktokIconUrl = assets.find(a => a.social_platform === 'tiktok')?.url || '/assets/tt.png';
@@ -137,12 +147,14 @@ export default function StorefrontShell({ children }: StorefrontShellProps) {
         }}
       />
 
-      {/* Banner Superior - Kawaii Ticker */}
-      <div className="kawaii-ticker">
-        <div className="ticker-content" dangerouslySetInnerHTML={{ 
-          __html: `${headerBanner} &nbsp;&nbsp;&nbsp;&nbsp; ${headerBanner} &nbsp;&nbsp;&nbsp;&nbsp; ${headerBanner}` 
-        }} />
-      </div>
+      {/* Banner Superior — Kawaii Ticker. Absent unless an operator turned it on. */}
+      {headerBanner && (
+        <div className="kawaii-ticker">
+          <div className="ticker-content" dangerouslySetInnerHTML={{
+            __html: `${headerBanner} &nbsp;&nbsp;&nbsp;&nbsp; ${headerBanner} &nbsp;&nbsp;&nbsp;&nbsp; ${headerBanner}`
+          }} />
+        </div>
+      )}
 
       {/* ── HEADER — exact copy of indigostores.com reference ── */}
       <header
@@ -253,33 +265,50 @@ export default function StorefrontShell({ children }: StorefrontShellProps) {
             </div>
           </nav>
 
-          {/* Right side: Search + Cart */}
-          <div className="flex items-center ml-2 gap-2 flex-shrink-0">
-            {/* Search bar — reference style */}
-            {/* Mobile trigger. Hidden from `sm` up, where the inline input fits. */}
-            <button
-              type="button"
-              onClick={() => setMobileSearchOpen((v) => !v)}
-              aria-label={mobileSearchOpen ? 'Cerrar busqueda' : 'Buscar'}
-              aria-expanded={mobileSearchOpen}
-              className="sm:hidden w-10 h-10 rounded-full border-2 border-[#ffd2e9] text-kawaii-pink flex items-center justify-center bg-white/70 active:scale-95 transition-transform flex-shrink-0"
-            >
-              {mobileSearchOpen ? <X size={18} /> : <Search size={18} />}
-            </button>
+          {/*
+            Right side: search, favourites, account, cart.
 
-            {/*
-              Below `sm` this is a full-width bar pinned under the header rather
-              than a box competing with the logo for space. `absolute` + inset
-              rather than a width, so it can never be wider than the screen.
-            */}
-            <div
-              ref={searchContainerRef}
-              className={`${
-                mobileSearchOpen
-                  ? 'absolute left-2 right-2 top-full mt-2 flex'
-                  : 'hidden'
-              } sm:static sm:mt-0 sm:flex sm:left-auto sm:right-auto relative sm:w-48 lg:w-64`}
-            >
+            Below `sm` these are a 2x2 grid -- account + cart on the top row,
+            search + favourites directly beneath -- because four 44px targets in
+            one row cannot coexist with a 157px logo on a 375px screen without
+            something being pushed off the edge. From `sm` up it collapses back
+            to the original single row, with `order-*` restoring the reading
+            order (search, favourites, account, cart) that the DOM no longer has.
+          */}
+          <div className="flex items-center ml-2 gap-2 flex-shrink-0">
+            <div className="grid grid-cols-2 place-items-center gap-1.5 sm:flex sm:items-center sm:gap-2">
+
+              {/* Mobile search trigger. `order-3` puts it at grid row 2 /
+                  column 1 — to the left of favourites, directly below account. */}
+              <button
+                type="button"
+                onClick={() => setMobileSearchOpen((v) => !v)}
+                aria-label={mobileSearchOpen ? 'Cerrar busqueda' : 'Buscar'}
+                aria-expanded={mobileSearchOpen}
+                className="order-3 sm:hidden w-11 h-11 rounded-full border-2 border-[#ffd2e9] text-kawaii-pink flex items-center justify-center bg-white/70 active:scale-95 transition-transform"
+              >
+                {mobileSearchOpen ? <X size={18} /> : <Search size={18} />}
+              </button>
+
+              {/*
+                The search field.
+
+                Below `sm` it is an overlay pinned under the header, so opening
+                it cannot move anything. That is precisely what was broken: the
+                class list carried BOTH `absolute` and `relative`, and because
+                Tailwind emits `.relative` after `.absolute` the element
+                computed to `relative` — in flow, 214px wide — which overlapped
+                the logo and shoved every icon ~123px right, pushing the cart to
+                the screen edge. Class order in the attribute is irrelevant;
+                only stylesheet order counts. `sm:relative` is used instead, so
+                the two positions can never apply at the same breakpoint.
+              */}
+              <div
+                ref={searchContainerRef}
+                className={`${
+                  mobileSearchOpen ? 'absolute left-2 right-2 top-full mt-2 flex' : 'hidden'
+                } sm:order-1 sm:relative sm:flex sm:left-auto sm:right-auto sm:top-auto sm:mt-0 sm:w-48 lg:w-64`}
+              >
               <input
                 type="text"
                 placeholder="Buscar producto..."
@@ -311,20 +340,16 @@ export default function StorefrontShell({ children }: StorefrontShellProps) {
               {/* Live Dropdown Overlay */}
               {isSearchOpen && (
                 /*
-                  Two positioning modes.
-
-                  Mobile: `fixed` with left/right insets, so the panel is bounded
-                  by the viewport itself. It used to be `absolute right-0 w-72`
-                  anchored to a narrow box that sits ~150px in from the screen
-                  edge -- 288px of panel extending leftward from there started
-                  off-screen, which is why the results were sliced down the left.
-
-                  sm and up: back to anchoring under the input, where there is
-                  room. max-h + scroll keeps a long result list from running off
-                  the bottom on a short screen.
+                  Anchored to the search wrapper in both modes, which is now
+                  possible because that wrapper is positioned at every
+                  breakpoint (absolute below `sm`, relative above). Previously
+                  the mobile panel was `fixed` at a hardcoded `top-[4.5rem]`, a
+                  magic number that only matched one header height — and the
+                  header is taller now that the icons are two rows. max-h +
+                  scroll keeps a long list off the bottom of a short screen.
                 */
                 <div
-                  className="fixed left-2 right-2 top-[4.5rem] sm:absolute sm:top-full sm:left-auto sm:right-0 sm:mt-3 sm:w-80 md:w-96 max-h-[70vh] overflow-y-auto bg-white/95 backdrop-blur-md border-2 border-[#ffd2e9] rounded-3xl shadow-[0_10px_30px_rgba(255,107,157,0.15)] z-[1000] p-3 flex flex-col gap-2"
+                  className="absolute top-full left-0 right-0 mt-2 sm:left-auto sm:right-0 sm:w-80 md:w-96 max-h-[70vh] overflow-y-auto bg-white/95 backdrop-blur-md border-2 border-[#ffd2e9] rounded-3xl shadow-[0_10px_30px_rgba(255,107,157,0.15)] z-[1000] p-3 flex flex-col gap-2"
                 >
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 pb-1 border-b border-pink-50">
                     Resultados de búsqueda
@@ -378,11 +403,11 @@ export default function StorefrontShell({ children }: StorefrontShellProps) {
               )}
             </div>
 
-            {/* Favoritos */}
+            {/* Favoritos — grid row 2 / column 2, i.e. directly below the cart. */}
             <Link
               href="/favoritos"
               title="Mis favoritos"
-              className="relative flex items-center justify-center cursor-pointer transition-all duration-300 w-11 h-11 rounded-full flex-shrink-0 border-2 border-[#ffd2e9] text-kawaii-pink hover:bg-[#fff6fa] hover:border-kawaii-pink"
+              className="order-4 sm:order-2 relative flex items-center justify-center cursor-pointer transition-all duration-300 w-11 h-11 rounded-full flex-shrink-0 border-2 border-[#ffd2e9] text-kawaii-pink hover:bg-[#fff6fa] hover:border-kawaii-pink"
             >
               <Heart size={19} strokeWidth={2.5} fill={favoritesCount > 0 ? 'currentColor' : 'none'} />
               {favoritesCount > 0 && (
@@ -392,22 +417,54 @@ export default function StorefrontShell({ children }: StorefrontShellProps) {
               )}
             </Link>
 
-            {/* Account link */}
-            <Link
-              href={user ? '/account' : '/account/login'}
-              title={user ? 'Mi cuenta' : 'Iniciar sesion'}
-              className="relative flex items-center justify-center cursor-pointer transition-all duration-300 w-11 h-11 rounded-full flex-shrink-0 border-2 border-[#ffd2e9] text-kawaii-pink hover:bg-[#fff6fa] hover:border-kawaii-pink"
-            >
-              <User size={20} strokeWidth={2.5} />
-              {user && (
-                <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-white" />
-              )}
-            </Link>
+            {/*
+              Account. On a pointer device hovering (or tabbing into) this opens
+              the shortcut menu; the icon itself stays a real link, so a tap on
+              mobile just navigates rather than opening a menu a touch user has
+              no way to dismiss.
+            */}
+            <div className="account-menu order-1 sm:order-3 relative flex-shrink-0">
+              <Link
+                href={user ? '/account' : '/account/login'}
+                title={user ? 'Mi cuenta' : 'Iniciar sesion'}
+                className="relative flex items-center justify-center cursor-pointer transition-all duration-300 w-11 h-11 rounded-full border-2 border-[#ffd2e9] text-kawaii-pink hover:bg-[#fff6fa] hover:border-kawaii-pink"
+              >
+                <User size={20} strokeWidth={2.5} />
+                {user && (
+                  <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-white" />
+                )}
+              </Link>
 
-            {/* Cart button */}
+              <div className="account-menu-panel">
+                {user ? (
+                  <>
+                    <Link href="/account" className="dropdown-item-ref flex items-center gap-2.5">
+                      <Package size={16} className="text-kawaii-pink flex-shrink-0" /> Mis ordenes
+                    </Link>
+                    <Link href="/favoritos" className="dropdown-item-ref flex items-center gap-2.5">
+                      <Heart size={16} className="text-kawaii-pink flex-shrink-0" /> Favoritos
+                    </Link>
+                    <Link href="/account/settings" className="dropdown-item-ref flex items-center gap-2.5">
+                      <Settings size={16} className="text-kawaii-pink flex-shrink-0" /> Configuracion
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <Link href="/account/login" className="dropdown-item-ref flex items-center gap-2.5">
+                      <User size={16} className="text-kawaii-pink flex-shrink-0" /> Iniciar sesion
+                    </Link>
+                    <Link href="/account/register" className="dropdown-item-ref flex items-center gap-2.5">
+                      <Package size={16} className="text-kawaii-pink flex-shrink-0" /> Registrarme
+                    </Link>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Cart — grid row 1 / column 2, beside the account icon. */}
             <button
               onClick={() => setIsCartOpen(true)}
-              className="relative flex items-center justify-center cursor-pointer transition-all duration-300 w-12 h-12 rounded-full flex-shrink-0 shadow-[0_4px_15px_rgba(255,107,157,0.3)] bg-gradient-to-br from-kawaii-pink to-kawaii-light-pink hover:translate-y-[-2px] hover:shadow-[0_6px_20px_rgba(255,107,157,0.4)]"
+              className="order-2 sm:order-4 relative flex items-center justify-center cursor-pointer transition-all duration-300 w-12 h-12 rounded-full flex-shrink-0 shadow-[0_4px_15px_rgba(255,107,157,0.3)] bg-gradient-to-br from-kawaii-pink to-kawaii-light-pink hover:translate-y-[-2px] hover:shadow-[0_6px_20px_rgba(255,107,157,0.4)]"
             >
               {/* Cart SVG */}
               <svg fill="white" stroke="white" width="22px" height="22px" viewBox="144 144 512 512" xmlns="http://www.w3.org/2000/svg">
@@ -429,6 +486,7 @@ export default function StorefrontShell({ children }: StorefrontShellProps) {
                 </span>
               )}
             </button>
+            </div>
           </div>
         </div>
 

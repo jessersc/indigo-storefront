@@ -100,20 +100,6 @@
         "updated_at": "2026-05-03 04:40:14"
       },
       {
-        "id": "e6b2c903-7808-4435-9821-4ae9d5f96141",
-        "name": "Header Banner",
-        "type": "image/png",
-        "url": null,
-        "category": "icons",
-        "asset_type": "header",
-        "social_platform": null,
-        "is_active": 1,
-        "html_content": "🌟 ¡¡ SE ACEPTAN PAGOS CON CASHEA A!! 🌟",
-        "display_order": 0,
-        "created_at": "2026-05-03 04:40:14",
-        "updated_at": "2026-05-03 04:40:14"
-      },
-      {
         "id": "eb854be5-9dc5-40c4-8a2c-a78ba32e316c",
         "name": "Instagram Icon",
         "type": "image/png",

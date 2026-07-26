@@ -133,9 +133,47 @@ h1, h2, h3, h4, .bubble-font {
   animation: none;
 }
 
-.group:hover .dropdown-panel-ref {
+.group:hover .dropdown-panel-ref,
+.group:focus-within .dropdown-panel-ref {
   opacity: 1;
   visibility: visible;
+}
+
+/* ==========================================
+   ACCOUNT MENU (header, right edge)
+   ==========================================
+
+   Deliberately NOT built on .dropdown-panel-ref. That class is declared
+   outside @layer, and Tailwind v4 puts its utilities inside a cascade layer --
+   unlayered rules win, so `hidden`, `left-auto` and friends are silently
+   ignored on it. (The Redes panel has that exact bug today: it carries
+   `right-0 left-auto` but computes to left:0 AND right:0.) Rather than fight
+   the cascade with !important, this menu owns its own positioning. */
+.account-menu-panel {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  min-width: 200px;
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(20px);
+  border: 1px solid #ffd2e9;
+  border-radius: 15px;
+  box-shadow: 0 10px 30px rgba(255, 107, 157, 0.2);
+  padding: 8px;
+  z-index: 1000;
+  gap: 2px;
+  grid-auto-rows: min-content;
+}
+
+/* Pointer devices only. Below `sm` the icon is a plain link to /account, so a
+   tap navigates instead of opening a menu that a touch user cannot dismiss.
+   :focus-within keeps the menu reachable by keyboard. */
+@media (min-width: 640px) {
+  .account-menu:hover > .account-menu-panel,
+  .account-menu:focus-within > .account-menu-panel {
+    display: grid;
+  }
 }
 
 /* Each item inside the panel */

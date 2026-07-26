@@ -157,9 +157,25 @@ export default function ProductGrid({
             />
           </div>
 
-          {/* Content */}
-          <div className="p-5 flex flex-col flex-grow text-center">
-            <h3 className="text-sm md:text-base font-black text-slate-800 line-clamp-2 leading-tight mb-3 min-h-[2.5rem] bubble-font">
+          {/* Content. Tighter horizontal padding below `md`: at 375px a card is
+              only ~151px wide, and 20px of padding each side left 111px of usable
+              room — not enough for the action buttons (see below). */}
+          <div className="p-3 md:p-5 flex flex-col flex-grow text-center">
+            {/*
+              Four lines on mobile, not two, at 15px rather than 14px. Product
+              names here routinely carry decorative characters ("⭐️Llavero
+              Colgante - Crybaby x Las Chicas Súper Poderosas ᯓ★") and were
+              being cut mid-word. Measured over a 30-card grid at 375px: two
+              lines clipped 5 names, three clipped 3, four clips 1. The `min-h`
+              reserves three lines so short names do not leave a hole, while a
+              long one is free to take a fourth — card heights stay level
+              regardless, because the button block is pinned with `mt-auto` and
+              the grid equalises each row. `title` carries the untruncated name.
+            */}
+            <h3
+              title={product.Product}
+              className="text-[15px] md:text-base font-black text-slate-800 line-clamp-4 md:line-clamp-2 leading-tight mb-3 min-h-[3.5rem] md:min-h-[2.5rem] bubble-font"
+            >
               {product.Product}
             </h3>
 
@@ -190,17 +206,32 @@ export default function ProductGrid({
                 </span>
               )}
 
+              {/*
+                Labels are shortened below `md`. A card is ~127px of usable
+                width on a 375px screen, but "AGREGAR AL CARRITO" needs ~142px
+                with its icon and gap. The overflow is what dragged the cart
+                icon hard against the left edge: `justify-center` cannot centre
+                content that does not fit, so it spilled out of the start of the
+                flex line. `whitespace-nowrap` + `shrink-0` on the icon keeps
+                that from silently coming back if a label is ever reworded.
+
+                Note the tracking is set here rather than with `tracking-*`:
+                `.bubble-font` declares letter-spacing unlayered, which beats
+                Tailwind's layered utilities, so `tracking-[0.15em]` never
+                actually applied on these buttons.
+              */}
               {hasVariants ? (
                 <button
-                  className="w-full py-3 rounded-full border-2 border-kawaii-pink text-kawaii-pink font-black text-[10px] uppercase tracking-[0.15em] hover:bg-kawaii-pink hover:text-white transition-all bubble-font"
+                  className="w-full py-3 rounded-full border-2 border-kawaii-pink text-kawaii-pink font-black text-[10px] uppercase hover:bg-kawaii-pink hover:text-white transition-all bubble-font whitespace-nowrap"
                 >
-                  SELECCIONAR MODELO
+                  <span className="md:hidden">VER MODELOS</span>
+                  <span className="hidden md:inline">SELECCIONAR MODELO</span>
                 </button>
               ) : !cardPurchasable ? (
                 <button
                   disabled
                   onClick={(e) => e.stopPropagation()}
-                  className="w-full py-3 rounded-full bg-slate-100 text-slate-400 border-2 border-slate-200 font-black text-[10px] uppercase tracking-[0.15em] cursor-not-allowed bubble-font"
+                  className="w-full py-3 rounded-full bg-slate-100 text-slate-400 border-2 border-slate-200 font-black text-[10px] uppercase cursor-not-allowed bubble-font whitespace-nowrap overflow-hidden text-ellipsis px-2"
                 >
                   {STOCK_STATUS_LABELS[cardStatus]}
                 </button>
@@ -208,14 +239,15 @@ export default function ProductGrid({
                 <div className="flex flex-col gap-2">
                   <button
                     onClick={(e) => { e.stopPropagation(); onAddToCart(product); }}
-                    className="w-full py-3 bg-kawaii-pink text-white rounded-full font-black text-[10px] uppercase tracking-[0.15em] hover:scale-[1.02] active:scale-95 transition-all shadow-md flex items-center justify-center gap-2 bubble-font"
+                    className="w-full py-3 bg-kawaii-pink text-white rounded-full font-black text-[10px] uppercase hover:scale-[1.02] active:scale-95 transition-all shadow-md flex items-center justify-center gap-2 bubble-font whitespace-nowrap"
                   >
-                    <ShoppingCart size={14} strokeWidth={3} />
-                    AGREGAR AL CARRITO
+                    <ShoppingCart size={14} strokeWidth={3} className="flex-shrink-0" />
+                    <span className="md:hidden">AGREGAR</span>
+                    <span className="hidden md:inline">AGREGAR AL CARRITO</span>
                   </button>
                   <button
                     onClick={(e) => handleBuyNow(e, product)}
-                    className="w-full py-3 bg-white text-kawaii-pink border-2 border-kawaii-pink rounded-full font-black text-[10px] uppercase tracking-[0.15em] hover:bg-kawaii-light-pink/10 transition-all bubble-font"
+                    className="w-full py-3 bg-white text-kawaii-pink border-2 border-kawaii-pink rounded-full font-black text-[10px] uppercase hover:bg-kawaii-light-pink/10 transition-all bubble-font whitespace-nowrap"
                   >
                     COMPRAR AHORA
                   </button>
