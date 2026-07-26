@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useFavorites } from '../context/FavoritesContext';
 import CartModal from './CartModal';
 import SupportWidget from './SupportWidget';
-import { CheckCircle2, User, Heart, Search, X } from 'lucide-react';
+import { CheckCircle2, User, Heart, Search, X, Package, Tag, ChevronDown } from 'lucide-react';
 import { getOptimizedImage } from '../lib/image';
 import { calculatePrices } from '../lib/currency';
 import { searchProducts, type SearchHit } from '../lib/search-api';
@@ -436,63 +436,82 @@ export default function StorefrontShell({ children }: StorefrontShellProps) {
         {isMenuOpen && (
           <div className="lg:hidden absolute top-full left-0 w-full bg-white shadow-xl border-b-2 border-kawaii-pink flex flex-col p-4 z-40 max-h-[80vh] overflow-y-auto">
             
-            <details className="mb-4 group">
-              <summary className="font-bold text-kawaii-pink mb-2 uppercase text-sm tracking-widest border-b border-pink-100 pb-2 cursor-pointer flex justify-between items-center list-none outline-none">
-                Categorías ♡ <span className="text-kawaii-pink group-open:rotate-180 transition-transform">▼</span>
-              </summary>
-              <div className="flex flex-col gap-3 mt-3 pl-2">
-                <Link href="/" className="text-sm font-semibold cursor-pointer text-slate-700 hover:text-kawaii-pink" onClick={() => setIsMenuOpen(false)}>Ver Todo →</Link>
-                {categories.map((cat) => (
-                  <Link key={cat} href={`/category/${encodeURIComponent(cat)}`} className={`text-sm cursor-pointer hover:text-kawaii-pink ${activeCategory === cat ? 'text-kawaii-pink font-bold' : 'text-slate-600'}`} onClick={() => setIsMenuOpen(false)}>
-                    {cat}
+            {/*
+              Three destinations that were three stacked full-width rows, each
+              costing a whole line of a menu already ~40 rows long. As a row of
+              tiles they fit on one line and are easier to hit with a thumb.
+            */}
+            <div className="grid grid-cols-3 gap-2 mb-5">
+              {[
+                { href: user ? '/account' : '/account/login', label: 'Pedidos', Icon: Package, active: false },
+                { href: '/favoritos', label: 'Favoritos', Icon: Heart, active: false },
+                { href: '/?promo=true', label: 'Promos', Icon: Tag, active: activePromotion },
+              ].map(({ href, label, Icon, active }) => (
+                <Link
+                  key={label}
+                  href={href}
+                  onClick={() => setIsMenuOpen(false)}
+                  className={`flex flex-col items-center gap-1.5 py-3 rounded-2xl border-2 transition-colors ${
+                    active
+                      ? 'bg-kawaii-pink border-kawaii-pink text-white'
+                      : 'bg-[#fff8fc] border-[#ffe3f1] text-slate-600 active:bg-[#fff0f7]'
+                  }`}
+                >
+                  <Icon size={19} className={active ? 'text-white' : 'text-kawaii-pink'} />
+                  <span className="text-[11px] font-black uppercase tracking-wider">{label}</span>
+                </Link>
+              ))}
+            </div>
+
+            {/*
+              Categories and collections as a two-column pill grid rather than one
+              name per row. With ~22 categories and ~39 collections the old list
+              was over 60 lines of scrolling to reach the social links at the
+              bottom; two columns halves that, and pills give a much bigger tap
+              target than a bare text link.
+            */}
+            {([
+              { title: 'Categorías', items: categories, base: '/category', active: activeCategory },
+              { title: 'Colecciones', items: collections, base: '/collection', active: activeCollection },
+            ] as const).map(({ title, items, base, active }) => (
+              <details key={title} className="mb-3 group" open>
+                <summary className="font-bold text-kawaii-pink uppercase text-xs tracking-widest border-b border-pink-100 pb-2 cursor-pointer flex justify-between items-center list-none outline-none">
+                  <span>
+                    {title} <span className="text-slate-300 font-semibold normal-case tracking-normal">({items.length})</span>
+                  </span>
+                  <ChevronDown size={16} className="text-kawaii-pink group-open:rotate-180 transition-transform" />
+                </summary>
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  <Link
+                    href="/"
+                    onClick={() => setIsMenuOpen(false)}
+                    className="col-span-2 text-center text-xs font-black uppercase tracking-wider text-kawaii-pink bg-[#fff0f7] rounded-xl py-2.5"
+                  >
+                    Ver todo →
                   </Link>
-                ))}
-              </div>
-            </details>
+                  {items.map((name) => (
+                    <Link
+                      key={name}
+                      href={`${base}/${encodeURIComponent(name)}`}
+                      onClick={() => setIsMenuOpen(false)}
+                      className={`text-[12px] leading-tight font-semibold rounded-xl px-3 py-2.5 border transition-colors ${
+                        active === name
+                          ? 'bg-kawaii-pink border-kawaii-pink text-white'
+                          : 'bg-white border-[#ffe3f1] text-slate-600 active:bg-[#fff8fc]'
+                      }`}
+                    >
+                      {name}
+                    </Link>
+                  ))}
+                </div>
+              </details>
+            ))}
 
-            <details className="mb-4 group">
-              <summary className="font-bold text-kawaii-pink mb-2 uppercase text-sm tracking-widest border-b border-pink-100 pb-2 cursor-pointer flex justify-between items-center list-none outline-none">
-                Colecciones ♡ <span className="text-kawaii-pink group-open:rotate-180 transition-transform">▼</span>
-              </summary>
-              <div className="flex flex-col gap-3 mt-3 pl-2">
-                <Link href="/" className="text-sm font-semibold cursor-pointer text-slate-700 hover:text-kawaii-pink" onClick={() => setIsMenuOpen(false)}>Ver Todo →</Link>
-                {collections.map((col) => (
-                  <Link key={col} href={`/collection/${encodeURIComponent(col)}`} className={`text-sm cursor-pointer hover:text-kawaii-pink ${activeCollection === col ? 'text-kawaii-pink font-bold' : 'text-slate-600'}`} onClick={() => setIsMenuOpen(false)}>
-                    {col}
-                  </Link>
-                ))}
-              </div>
-            </details>
-
-            <Link
-              href={user ? '/account' : '/account/login'}
-              className="font-bold mb-2 uppercase text-sm tracking-widest border-b border-pink-100 pb-2 mt-4 cursor-pointer hover:text-kawaii-pink block text-slate-600"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              Mis Pedidos ♡
-            </Link>
-
-            <Link
-              href="/favoritos"
-              className="font-bold mb-2 uppercase text-sm tracking-widest border-b border-pink-100 pb-2 cursor-pointer hover:text-kawaii-pink block text-slate-600"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              Mis Favoritos ♡
-            </Link>
-
-            <Link 
-              href="/?promo=true"
-              className={`font-bold mb-2 uppercase text-sm tracking-widest border-b border-pink-100 pb-2 mt-4 cursor-pointer hover:text-kawaii-pink block ${activePromotion ? 'text-kawaii-pink' : 'text-slate-600'}`}
-              onClick={() => setIsMenuOpen(false)}
-            >
-              Promociones ♡
-            </Link>
-
-            <div className="font-bold text-kawaii-pink mb-2 uppercase text-sm tracking-widest border-b border-pink-100 pb-2 mt-4">Redes ♡</div>
-            <div className="flex gap-4 mt-3">
-              <a href={igUrl} target="_blank" rel="noopener noreferrer"><img src={instagramIconUrl} className="w-8 h-8 object-contain hover:scale-110 transition-transform" alt="IG" /></a>
-              <a href={ttUrl} target="_blank" rel="noopener noreferrer"><img src={tiktokIconUrl} className="w-8 h-8 object-contain hover:scale-110 transition-transform" alt="TT" /></a>
-              <a href={waUrl} target="_blank" rel="noopener noreferrer"><img src={whatsappIconUrl} className="w-8 h-8 object-contain hover:scale-110 transition-transform" alt="WA" /></a>
+            <div className="font-bold text-kawaii-pink mb-1 uppercase text-xs tracking-widest border-b border-pink-100 pb-2 mt-2">Redes ♡</div>
+            <div className="flex gap-5 justify-center py-4">
+              <a href={igUrl} target="_blank" rel="noopener noreferrer"><img src={instagramIconUrl} className="w-9 h-9 object-contain active:scale-95 transition-transform" alt="IG" /></a>
+              <a href={ttUrl} target="_blank" rel="noopener noreferrer"><img src={tiktokIconUrl} className="w-9 h-9 object-contain active:scale-95 transition-transform" alt="TT" /></a>
+              <a href={waUrl} target="_blank" rel="noopener noreferrer"><img src={whatsappIconUrl} className="w-9 h-9 object-contain active:scale-95 transition-transform" alt="WA" /></a>
             </div>
           </div>
         )}
