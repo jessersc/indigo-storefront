@@ -130,16 +130,31 @@ export default function AccountPage() {
             {orders.map((o) => (
               <div key={o.id} className="flex items-center justify-between py-3 gap-3">
                 <div className="min-w-0">
-                  <p className="font-black text-slate-800 text-sm">{o.order_number}</p>
+                  {/* The number opens the full order: items, delivery, courier,
+                      tracking, and the payment details when it is still owed. */}
+                  <Link
+                    href={`/account/orders/${encodeURIComponent(o.order_number)}`}
+                    className="font-black text-slate-800 text-sm hover:text-kawaii-pink transition-colors"
+                  >
+                    {o.order_number}
+                  </Link>
                   <p className="text-xs text-slate-400 font-bold">
                     {o.item_count} art. - {o.payment_method} - {new Date(o.created_at).toLocaleDateString('es-VE')}
                   </p>
-                  <button
-                    onClick={() => { setModalOrder(o.order_number); setKind('refund'); setReason(''); setModalError(''); }}
-                    className="text-[11px] text-kawaii-pink font-bold hover:underline mt-1"
-                  >
-                    Solicitar reembolso o reemplazo
-                  </button>
+                  <div className="flex flex-wrap items-center gap-3 mt-1">
+                    <Link
+                      href={`/account/orders/${encodeURIComponent(o.order_number)}`}
+                      className="text-[11px] text-kawaii-pink font-bold hover:underline"
+                    >
+                      Ver detalle
+                    </Link>
+                    <button
+                      onClick={() => { setModalOrder(o.order_number); setKind('refund'); setReason(''); setModalError(''); }}
+                      className="text-[11px] text-kawaii-pink font-bold hover:underline"
+                    >
+                      Solicitar reembolso o reemplazo
+                    </button>
+                  </div>
                 </div>
                 <div className="text-right flex-shrink-0">
                   <p className="font-black text-kawaii-pink text-sm">${o.total_usd.toFixed(2)}</p>
