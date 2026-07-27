@@ -130,6 +130,73 @@ export async function POST(req: NextRequest) {
     'https://external.cashea.app';
 
   try {
+    /*
+      The SDK checkout finished in the browser and reported success.
+
+      That report is a claim, not proof, so nothing is confirmed on the strength
+      of it. This re-reads the order from Cashea using the merchant key, checks
+      the status server-side, and only then tells the Worker the order is paid.
+      A tampered client can at most trigger a lookup that disagrees with it.
+    */
+    if (action === 'verify') {
+      const body = (await req.json().catch(() => null)) as
+        | { orderNumber?: string; idNumber?: string }
+        | null;
+      const orderNumber = body?.orderNumber?.trim();
+      const cedula = (body?.idNumber ?? idNumber ?? '').trim();
+
+      if (!orderNumber || !cedula) {
+        return NextResponse.json(
+          { ok: false, error: 'orderNumber and idNumber are required' },
+          { status: 400, headers: corsHeaders }
+        );
+      }
+      if (!/^\d{1,20}$/.test(cedula)) {
+        return NextResponse.json(
+          { ok: false, error: 'invalid idNumber' },
+          { status: 400, headers: corsHeaders }
+        );
+      }
+      // Same ownership gate as the lookup: a cedula is not a secret, so it
+      // alone must never unlock someone else's Cashea order.
+      if (!(await verifyOrderOwner(orderNumber, cedula))) {
+        return NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403, headers: corsHeaders });
+      }
+
+      const res = await fetch(`${CASHEA_API_URL}/orders/${cedula}`, {
+        method: 'GET',
+        headers: buildCasheaHeaders(),
+      });
+      const data = (await res.json().catch(() => null)) as any;
+      if (!res.ok || !data) {
+        return NextResponse.json(
+          { ok: false, error: 'lookup_failed' },
+          { status: 502, headers: corsHeaders }
+        );
+      }
+
+      const status = String(
+        data?.status ?? data?.paymentStatus ?? data?.payments?.[0]?.status ?? '',
+      ).toLowerCase();
+      // Same set the legacy site accepted, lowercased once instead of listing
+      // every capitalisation.
+      const PAID = ['paid', 'completed', 'success', 'approved'];
+      if (!PAID.includes(status)) {
+        return NextResponse.json(
+          { ok: false, error: 'not_paid', status },
+          { status: 402, headers: corsHeaders }
+        );
+      }
+
+      await confirmPaymentWithWorker({
+        orderNumber,
+        method: 'cashea',
+        transactionId: data?.id ?? data?.orderId ?? data?.payments?.[0]?.id ?? String(cedula),
+      });
+
+      return NextResponse.json({ ok: true, status }, { headers: corsHeaders });
+    }
+
     if (action === 'confirm-payment') {
       if (!idNumber) {
         return NextResponse.json(

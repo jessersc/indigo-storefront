@@ -38,6 +38,7 @@ export default function CryptoPayment({
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [copied, setCopied] = useState(false);
+  const [copiedContract, setCopiedContract] = useState(false);
 
   useEffect(() => {
     getCryptoConfig()
@@ -118,7 +119,22 @@ export default function CryptoPayment({
     );
   }
 
-  const networkName = config.chainId === 1 ? 'Ethereum (Mainnet)' : `Red ${config.chainId}`;
+  const networkName =
+    config.chainId === 1 ? 'Ethereum (Mainnet)'
+    : config.chainId === 11155111 ? 'Sepolia (red de prueba)'
+    : `Red ${config.chainId}`;
+
+  // The contract for the token currently selected. Shown so a customer whose
+  // wallet does not list the token can add it by address rather than guessing.
+  const selectedContract = config.tokens?.[selectedToken]?.contract ?? '';
+
+  const copyContract = () => {
+    if (!selectedContract) return;
+    navigator.clipboard.writeText(selectedContract).then(() => {
+      setCopiedContract(true);
+      setTimeout(() => setCopiedContract(false), 2000);
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -131,22 +147,83 @@ export default function CryptoPayment({
           </p>
         </div>
 
-        {/* Token selector */}
-        <div className="flex gap-3">
-          {(['USDC', 'USDT'] as TokenSymbol[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setSelectedToken(t)}
-              className={`flex-1 py-2.5 rounded-2xl border-2 font-black text-sm transition-all ${
-                selectedToken === t
-                  ? 'border-kawaii-pink bg-[#fff6fa] text-kawaii-pink'
-                  : 'border-slate-100 text-slate-500 hover:border-kawaii-light-pink/50'
-              }`}
-            >
-              {t}
-            </button>
-          ))}
+        {/*
+          Token selector.
+
+          The receiving address is the SAME for both tokens — it is one wallet —
+          so choosing here is not cosmetic: it decides which contract the
+          Worker checks the transfer against. Pick USDC, send USDT, and
+          verification finds no matching transfer even though the money
+          arrived. Hence the contract address and the explicit warning below:
+          the choice has to be visibly consequential, not a styling toggle.
+        */}
+        <div>
+          <p className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-2">
+            1. Elige que moneda vas a enviar
+          </p>
+          <div className="flex gap-3">
+            {(['USDC', 'USDT'] as TokenSymbol[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setSelectedToken(t)}
+                className={`flex-1 py-2.5 rounded-2xl border-2 font-black text-sm transition-all ${
+                  selectedToken === t
+                    ? 'border-kawaii-pink bg-[#fff6fa] text-kawaii-pink'
+                    : 'border-slate-100 text-slate-500 hover:border-kawaii-light-pink/50'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Exactly what to send, so there is nothing to infer. */}
+        <div className="bg-[#fff6fa] border border-[#ffe0ef] rounded-2xl p-4 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Monto</span>
+            <span className="font-black text-slate-800">
+              {totalUsd.toFixed(2)} {selectedToken}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Red</span>
+            <span className="font-black text-slate-800">{networkName}</span>
+          </div>
+          {selectedContract && (
+            <div className="pt-2 border-t border-[#ffe0ef]">
+              <p className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-1">
+                Contrato de {selectedToken}
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-mono text-slate-600 break-all flex-1">
+                  {selectedContract}
+                </span>
+                <button
+                  type="button"
+                  onClick={copyContract}
+                  className="p-1.5 rounded-lg hover:bg-white transition-colors flex-shrink-0"
+                  title="Copiar contrato"
+                >
+                  {copiedContract
+                    ? <Check size={14} className="text-green-500" />
+                    : <Copy size={14} className="text-slate-400" />}
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400 font-semibold mt-1">
+                Usalo si tu wallet no muestra {selectedToken} en la lista.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3">
+          <p className="text-xs font-bold text-amber-800 leading-relaxed">
+            ⚠️ Envia solo <strong>{selectedToken}</strong> por la red <strong>{networkName}</strong>.
+            Enviar otra moneda, u otra red, hace que el pago no se pueda verificar
+            y los fondos no se recuperan.
+          </p>
         </div>
 
         {/* Address + QR */}

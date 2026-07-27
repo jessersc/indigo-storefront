@@ -1,178 +1,271 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { AlertCircle, Check, Search } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertCircle, ExternalLink } from 'lucide-react';
 
 /**
  * Cashea (buy now, pay in instalments).
  *
- * The real flow, using the store's Cashea merchant API:
- *   1. The customer creates the order in the Cashea app against this store.
- *   2. We look it up by their cedula  (GET  /orders/:idNumber).
- *   3. They confirm, and we capture the down payment
- *      (POST /orders/:idNumber/down-payment).
+ * Opens Cashea DIRECTLY, via their Web Checkout SDK, the way the legacy site
+ * did. The button the SDK renders takes the customer straight into Cashea's
+ * flow with the cart already loaded.
  *
- * Step 3 runs entirely inside our Vercel route, which holds the merchant key
- * and — once Cashea reports the capture succeeded — confirms the order with the
- * Worker over the internal channel. The browser is never the thing that says a
- * payment happened.
+ * The interim implementation asked the customer to go and build the order
+ * themselves inside the Cashea app and then come back and find it by cedula.
+ * That worked, but it is a different (and much worse) purchase: the customer
+ * has to re-enter their own basket in another app.
+ *
+ * ── What is NOT trusted ─────────────────────────────────────────────────────
+ *
+ * The SDK's `checkout:success` event is a browser claim. It is used only as a
+ * signal to go and ask our own server to check. `/api/cashea?action=verify`
+ * re-reads the order from Cashea with the merchant key, checks the status
+ * there, and only then confirms the order with the Worker over the internal
+ * channel. Nothing a tampered client says can mark an order paid — the same
+ * boundary every other gateway here respects.
  */
 
 const CASHEA_LOGO = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="32" height="32"><rect x="30" y="30" width="940" height="940" rx="220" ry="220" fill="#FFF212"/><circle cx="500" cy="520" r="320" fill="#373435"/><circle cx="500" cy="520" r="170" fill="#FFF212"/><rect x="665" y="420" width="300" height="200" fill="#FFF212"/><rect x="470" y="112" width="60" height="220" fill="#FFF212"/><rect x="640" y="440" width="40" height="40" fill="#FFF212"/></svg>`;
+
+/** Cashea's published minimum for an instalment plan. */
+const CASHEA_MINIMUM_USD = 25;
+
+const SDK_SRC = 'https://unpkg.com/cashea-web-checkout-sdk@latest/dist/webcheckout-sdk.min.js';
+const SDK_ID = 'cashea-web-checkout-sdk';
+
+declare global {
+  interface Window {
+    WebCheckoutSDK?: new (opts: { apiKey: string }) => any;
+  }
+}
+
+let sdkPromise: Promise<void> | null = null;
+
+/** Load the SDK once, however many times this component mounts. */
+function loadCasheaSdk(): Promise<void> {
+  if (typeof window === 'undefined') return Promise.resolve();
+  if (window.WebCheckoutSDK) return Promise.resolve();
+  if (sdkPromise) return sdkPromise;
+
+  sdkPromise = new Promise<void>((resolve, reject) => {
+    const existing = document.getElementById(SDK_ID);
+    if (existing) {
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', () => reject(new Error('cashea sdk failed')));
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = SDK_ID;
+    script.src = SDK_SRC;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => {
+      // Let a later attempt retry rather than caching the failure forever.
+      sdkPromise = null;
+      reject(new Error('cashea sdk failed'));
+    };
+    document.head.appendChild(script);
+  });
+  return sdkPromise;
+}
+
+export interface CasheaLineItem {
+  id: string;
+  name: string;
+  sku?: string | null;
+  description?: string | null;
+  imageUrl?: string | null;
+  quantity: number;
+  priceUsd: number;
+}
 
 interface CasheaPaymentProps {
   orderNumber: string;
   totalUsd: number;
   /** The customer's cedula, already collected on the delivery form. */
   cedula: string;
-  /** Persists the order as pending before any capture. Idempotent. */
+  /** Lines to hand Cashea, so their basket matches ours. */
+  items: CasheaLineItem[];
+  /** Persists the checkout before Cashea is opened. Idempotent. */
   ensureOrderSaved: () => Promise<boolean>;
   onConfirmed: (transactionId?: string) => void;
-}
-
-/** What we surface from Cashea's order payload, defensively parsed. */
-interface CasheaOrder {
-  id: string;
-  status: string;
-  /** Total the customer owes Cashea. */
-  total: number | null;
-  /** The up-front instalment we capture now. */
-  downPayment: number | null;
-  instalments: number | null;
-}
-
-/**
- * Cashea's payload has shifted field names between versions, so each value is
- * read from the first key that is present rather than assuming one shape.
- */
-function parseCasheaOrder(raw: any): CasheaOrder | null {
-  const order = raw?.order ?? raw?.data ?? raw;
-  if (!order || typeof order !== 'object') return null;
-
-  const id = order.id ?? order.orderId ?? order.reference ?? '';
-  if (!id) return null;
-
-  const num = (...keys: string[]): number | null => {
-    for (const k of keys) {
-      const v = Number(order[k]);
-      if (Number.isFinite(v) && v > 0) return v;
-    }
-    return null;
-  };
-
-  return {
-    id: String(id),
-    status: String(order.status ?? order.state ?? 'pending'),
-    total: num('total', 'amount', 'totalAmount'),
-    downPayment: num('downPayment', 'down_payment', 'initialPayment', 'firstInstalment'),
-    instalments: num('instalments', 'installments', 'quotas', 'numberOfInstallments'),
-  };
 }
 
 export default function CasheaPayment({
   orderNumber,
   totalUsd,
   cedula,
+  items,
   ensureOrderSaved,
   onConfirmed,
 }: CasheaPaymentProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [configured, setConfigured] = useState<boolean | null>(null);
-  const [idNumber, setIdNumber] = useState(cedula || '');
-  const [order, setOrder] = useState<CasheaOrder | null>(null);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [buttonReady, setButtonReady] = useState(false);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    fetch('/api/cashea?action=config')
-      .then((r) => r.json())
-      .then((c: any) => setConfigured(Boolean(c?.configured)))
-      .catch(() => setConfigured(false));
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
   }, []);
 
-  const lookupOrder = async () => {
-    const id = idNumber.trim();
-    if (!/^\d+$/.test(id)) {
-      setError('Ingresa tu cedula (solo numeros).');
-      return;
-    }
-    setBusy(true);
-    setError('');
-    setOrder(null);
-    try {
-      // The lookup is gated on owning an unpaid order placed with this cedula,
-      // so ours has to exist before we can ask Cashea about theirs.
-      if (!(await ensureOrderSaved())) {
-        setError('No pudimos registrar tu pedido. Intenta de nuevo.');
-        return;
-      }
-
-      const res = await fetch(
-        `/api/cashea?action=orders&idNumber=${encodeURIComponent(id)}` +
-          `&orderNumber=${encodeURIComponent(orderNumber)}`,
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        setError(
-          res.status === 403
-            ? 'Verifica que la cedula sea la misma que usaste en tus datos de entrega.'
-            : res.status === 404
-              ? 'No encontramos una orden de Cashea con esa cedula. Creala primero en la app de Cashea.'
-              : 'No pudimos consultar tu orden en Cashea. Intenta de nuevo.',
-        );
-        return;
-      }
-      const parsed = parseCasheaOrder(data);
-      if (!parsed) {
-        setError('No encontramos una orden de Cashea activa con esa cedula.');
-        return;
-      }
-      setOrder(parsed);
-    } catch {
-      setError('Error consultando Cashea. Intenta de nuevo.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const confirmDownPayment = async () => {
-    if (!order) return;
+  /**
+   * Ask our server whether Cashea really took the payment. Called from the
+   * SDK's success event, which is never believed on its own.
+   */
+  const verifyWithServer = useCallback(async () => {
     setBusy(true);
     setError('');
     try {
-      // The order must exist on our side first: the Vercel route confirms it by
-      // order number as soon as Cashea captures.
-      if (!(await ensureOrderSaved())) {
-        setError('No pudimos registrar tu pedido. Intenta de nuevo.');
+      const res = await fetch('/api/cashea?action=verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderNumber, idNumber: cedula.replace(/\D/g, '') }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && (data as any)?.ok) {
+        onConfirmed((data as any)?.transactionId);
         return;
       }
-
-      const amount = order.downPayment ?? order.total ?? totalUsd;
-      const res = await fetch(
-        `/api/cashea?action=confirm-payment&idNumber=${encodeURIComponent(idNumber.trim())}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ amount, orderNumber }),
-        },
+      setError(
+        res.status === 402
+          ? 'Cashea todavia no reporta el pago como completado. Si ya pagaste, espera un momento e intenta de nuevo.'
+          : 'No pudimos confirmar tu pago con Cashea. Escribenos y lo revisamos enseguida.',
       );
-      const data = await res.json();
+    } catch {
+      setError('No pudimos confirmar tu pago con Cashea. Revisa tu conexion e intenta de nuevo.');
+    } finally {
+      if (mountedRef.current) setBusy(false);
+    }
+  }, [orderNumber, cedula, onConfirmed]);
 
-      if (!res.ok) {
-        setError(
-          (data as any)?.error ??
-            'Cashea no pudo procesar la inicial. Verifica tu cupo e intenta de nuevo.',
-        );
+  useEffect(() => {
+    let cancelled = false;
+
+    async function mountButton() {
+      // Below the minimum Cashea will refuse the plan, so say so here rather
+      // than sending the customer into a flow that cannot complete.
+      if (totalUsd < CASHEA_MINIMUM_USD) {
+        setConfigured(false);
+        setError(`El minimo para pagar con Cashea es $${CASHEA_MINIMUM_USD} USD.`);
         return;
       }
-      onConfirmed((data as any)?.id ?? order.id);
-    } catch {
-      setError('Error confirmando el pago con Cashea. Intenta de nuevo.');
-    } finally {
-      setBusy(false);
-    }
-  };
 
-  if (configured === false) {
+      const idNumber = (cedula || '').replace(/\D/g, '');
+      if (!idNumber) {
+        setConfigured(false);
+        setError('Necesitamos tu cedula en el formulario para poder usar Cashea.');
+        return;
+      }
+
+      try {
+        const cfgRes = await fetch('/api/cashea?action=config');
+        const cfg = await cfgRes.json().catch(() => null);
+        if (cancelled) return;
+
+        if (!cfg?.configured || !cfg?.publicApiKey || !cfg?.externalClientId) {
+          setConfigured(false);
+          return;
+        }
+        setConfigured(true);
+
+        // The draft has to exist before Cashea is opened: the verify call is
+        // gated on owning an unpaid checkout with this cedula, and Cashea's
+        // invoiceId is our order number.
+        if (!(await ensureOrderSaved())) {
+          setError('No pudimos registrar tu pedido. Intenta de nuevo.');
+          return;
+        }
+        if (cancelled) return;
+
+        await loadCasheaSdk();
+        if (cancelled || !containerRef.current) return;
+
+        const SDK = window.WebCheckoutSDK;
+        if (!SDK) throw new Error('sdk missing');
+
+        /*
+          Payload shape ported from the legacy site
+          (indigo/public/assets/main.js). Cashea rejects the order outright if
+          a product is missing a name, sku, description or imageUrl, so each
+          falls back rather than being sent empty — that was the source of most
+          "invalid payload" failures on the old site.
+        */
+        const products = items
+          .filter((i) => i.id && i.name && i.quantity > 0)
+          .map((i) => ({
+            id: String(i.id),
+            name: String(i.name),
+            sku: String(i.sku || i.id),
+            description: String(i.description || i.name),
+            imageUrl: String(i.imageUrl || ''),
+            quantity: Number(i.quantity),
+            price: Number(i.priceUsd),
+            tax: 0,
+            discount: 0,
+          }));
+
+        if (products.length === 0) {
+          setError('No pudimos preparar tu carrito para Cashea.');
+          return;
+        }
+
+        const payload = {
+          identificationNumber: String(idNumber),
+          externalClientId: String(cfg.externalClientId),
+          deliveryMethod: 'IN_STORE',
+          merchantName: 'Indigo Store',
+          redirectUrl: `${window.location.origin}/checkout?cashea=1&order=${encodeURIComponent(orderNumber)}`,
+          invoiceId: String(orderNumber),
+          deliveryPrice: 0,
+          orders: [{ store: cfg.store ?? { id: 21977, name: 'Web Indigo Store', enabled: true }, products }],
+        };
+
+        const sdk = new SDK({ apiKey: cfg.publicApiKey });
+
+        // The SDK has shipped both `on` and `addEventListener` across versions.
+        const listen = (event: string, handler: (payload: unknown) => void) => {
+          if (typeof sdk.on === 'function') sdk.on(event, handler);
+          else if (typeof sdk.addEventListener === 'function') sdk.addEventListener(event, handler);
+        };
+
+        listen('checkout:success', () => { void verifyWithServer(); });
+        listen('checkout:error', () => {
+          setError('Cashea no pudo procesar el pago. Verifica tu cupo e intenta de nuevo.');
+        });
+
+        containerRef.current.innerHTML = '';
+        sdk.createCheckoutButton({ payload, container: containerRef.current });
+        setButtonReady(true);
+
+        // The SDK renders its own button; stretch it to the card width so it
+        // does not sit at an odd intrinsic size on a phone.
+        setTimeout(() => {
+          containerRef.current
+            ?.querySelectorAll<HTMLElement>('button, [role="button"]')
+            .forEach((el) => {
+              el.style.width = '100%';
+              el.style.maxWidth = '100%';
+              el.style.boxSizing = 'border-box';
+            });
+        }, 100);
+      } catch {
+        if (!cancelled) {
+          setError(
+            'No pudimos cargar Cashea. Revisa tu conexion y recarga la pagina, o elige otro metodo de pago.',
+          );
+        }
+      }
+    }
+
+    void mountButton();
+    return () => { cancelled = true; };
+  }, [orderNumber, totalUsd, cedula, items, ensureOrderSaved, verifyWithServer]);
+
+  if (configured === false && !error) {
     return (
       <div className="bg-amber-50 border border-amber-200 rounded-3xl p-6 flex items-start gap-3">
         <AlertCircle size={20} className="text-amber-500 flex-shrink-0 mt-0.5" />
@@ -191,87 +284,47 @@ export default function CasheaPayment({
           <h3 className="font-black text-slate-800 text-xl">Paga con Cashea</h3>
         </div>
         <p className="text-sm text-slate-500 font-semibold leading-relaxed">
-          Crea tu orden en la app de Cashea seleccionando <strong>Indigo Store</strong>, luego
-          buscala aqui con tu cedula para confirmar la inicial.
+          Al continuar se abre Cashea con tu pedido ya cargado. Elige tu plan de
+          cuotas y paga la inicial; al terminar volveras aqui y confirmamos tu
+          orden automaticamente.
         </p>
         <p className="text-xs text-slate-400 font-semibold">
           Monto de tu pedido: <strong>${totalUsd.toFixed(2)} USD</strong>
         </p>
 
-        <div className="flex gap-2">
-          <input
-            type="text"
-            inputMode="numeric"
-            placeholder="Tu cedula"
-            value={idNumber}
-            onChange={(e) => setIdNumber(e.target.value.replace(/\D/g, ''))}
-            className="flex-1 border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm font-semibold outline-none focus:border-[#373435]"
-          />
-          <button
-            type="button"
-            onClick={lookupOrder}
-            disabled={busy}
-            className="bg-[#373435] text-[#FFF212] px-5 rounded-2xl font-black text-sm tracking-wide disabled:opacity-60 flex items-center gap-2"
-          >
-            <Search size={16} />
-            BUSCAR
-          </button>
-        </div>
+        <div ref={containerRef} className="w-full min-h-[52px]" />
+
+        {!buttonReady && !error && (
+          <div className="flex items-center justify-center gap-2 py-3 text-slate-400 font-bold text-sm">
+            <div className="w-4 h-4 border-2 border-kawaii-pink border-t-transparent rounded-full animate-spin" />
+            Cargando Cashea...
+          </div>
+        )}
+
+        {busy && (
+          <div className="flex items-center justify-center gap-2 py-2 text-kawaii-pink font-bold text-sm">
+            <div className="w-4 h-4 border-2 border-kawaii-pink border-t-transparent rounded-full animate-spin" />
+            Confirmando tu pago...
+          </div>
+        )}
       </div>
 
-      {order && (
-        <div className="bg-[#FFF212]/20 border-2 border-[#FFF212] rounded-3xl p-6 space-y-3">
-          <div className="flex items-center gap-2">
-            <Check size={18} className="text-[#373435]" />
-            <span className="font-black text-slate-800">Orden de Cashea encontrada</span>
-          </div>
-          <dl className="text-sm font-semibold text-slate-600 space-y-1">
-            <div className="flex justify-between">
-              <dt>Referencia</dt>
-              <dd className="font-black text-slate-800">{order.id}</dd>
-            </div>
-            {order.total !== null && (
-              <div className="flex justify-between">
-                <dt>Total en Cashea</dt>
-                <dd className="font-black text-slate-800">${order.total.toFixed(2)}</dd>
-              </div>
-            )}
-            {order.instalments !== null && (
-              <div className="flex justify-between">
-                <dt>Cuotas</dt>
-                <dd className="font-black text-slate-800">{order.instalments}</dd>
-              </div>
-            )}
-            {order.downPayment !== null && (
-              <div className="flex justify-between">
-                <dt>Inicial a pagar ahora</dt>
-                <dd className="font-black text-slate-800">${order.downPayment.toFixed(2)}</dd>
-              </div>
-            )}
-          </dl>
-
-          {order.total !== null && Math.abs(order.total - totalUsd) > 0.5 && (
-            <p className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3">
-              El monto de tu orden en Cashea (${order.total.toFixed(2)}) no coincide con el de tu
-              carrito (${totalUsd.toFixed(2)}). Verifica antes de continuar.
-            </p>
-          )}
-
-          <button
-            type="button"
-            onClick={confirmDownPayment}
-            disabled={busy}
-            className="w-full bg-[#373435] text-[#FFF212] py-4 rounded-full font-black tracking-widest hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-60"
-          >
-            {busy ? 'PROCESANDO...' : 'CONFIRMAR INICIAL'}
-          </button>
-        </div>
-      )}
-
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-2">
-          <AlertCircle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
-          <p className="text-sm font-semibold text-red-700">{error}</p>
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
+          <div className="flex items-start gap-2">
+            <AlertCircle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
+            <p className="text-sm font-semibold text-red-700">{error}</p>
+          </div>
+          {/* If Cashea itself is unreachable there is nothing the customer can
+              do on this page, so give them a way to reach a human. */}
+          <a
+            href="https://wa.me/584128503608"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs font-black text-red-700 underline"
+          >
+            Escribenos por WhatsApp <ExternalLink size={12} />
+          </a>
         </div>
       )}
     </div>
