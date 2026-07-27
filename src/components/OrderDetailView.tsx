@@ -249,21 +249,52 @@ export default function OrderDetailView({
         <Row label="Pago" value={`${order.payment.method} - ${PAYMENT_STATUS_LABEL[order.payment.status] ?? order.payment.status}`} />
       </div>
 
-      {/* Refund / replacement history */}
+      {/*
+        Refund / replacement requests, each with its full history.
+
+        The status alone is not the story: a request that was rejected and then
+        approved reads identically to one approved first time, and the customer
+        received an email at each step. Showing the timeline means what they
+        were told and what the page says cannot disagree.
+      */}
       {order.requests.length > 0 && (
-        <div className="bg-white rounded-3xl border border-[#ffe0ef] p-6 space-y-3">
+        <div className="bg-white rounded-3xl border border-[#ffe0ef] p-6 space-y-4">
           <h3 className="font-black text-slate-700">Solicitudes</h3>
           {order.requests.map((r) => (
-            <div key={r.id} className="border-b border-[#ffe0ef] last:border-0 pb-3 last:pb-0">
+            <div key={r.id} className="border-b border-[#ffe0ef] last:border-0 pb-4 last:pb-0 space-y-2">
               <div className="flex items-center justify-between gap-3">
                 <span className="font-bold text-slate-700 text-sm">{REQUEST_KIND[r.kind] ?? r.kind}</span>
                 <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                   {REQUEST_STATUS[r.status] ?? r.status}
                 </span>
               </div>
-              {r.reason && <p className="text-xs font-semibold text-slate-400 mt-1">{r.reason}</p>}
+              {r.reason && <p className="text-xs font-semibold text-slate-400">{r.reason}</p>}
               {r.admin_note && (
-                <p className="text-xs font-semibold text-slate-600 mt-1">Respuesta: {r.admin_note}</p>
+                <p className="text-xs font-semibold text-slate-600">Respuesta: {r.admin_note}</p>
+              )}
+
+              {r.events?.length > 0 && (
+                <ol className="space-y-2 pt-1">
+                  {r.events.map((e, i) => (
+                    <li key={i} className="flex gap-2.5 text-xs">
+                      <span className="w-1.5 h-1.5 rounded-full bg-kawaii-pink mt-1.5 shrink-0" />
+                      <div>
+                        <p className="font-bold text-slate-600">
+                          {e.from_status
+                            ? `${REQUEST_STATUS[e.to_status] ?? e.to_status}`
+                            : 'Solicitud enviada'}
+                          {e.by_customer && ' (por ti)'}
+                        </p>
+                        <p className="font-semibold text-slate-400">
+                          {new Date(e.created_at).toLocaleDateString('es-VE', {
+                            day: 'numeric', month: 'short', year: 'numeric',
+                          })}
+                        </p>
+                        {e.note && <p className="font-semibold text-slate-500 italic mt-0.5">“{e.note}”</p>}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
               )}
             </div>
           ))}

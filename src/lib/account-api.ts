@@ -144,6 +144,14 @@ export async function deleteAddress(id: string, token: string): Promise<void> {
   await unwrap(res);
 }
 
+export interface RefundRequestEvent {
+  from_status: string | null;
+  to_status: string;
+  note: string | null;
+  created_at: string;
+  by_customer: boolean;
+}
+
 export interface RefundRequest {
   id: string;
   order_number: string;
@@ -152,6 +160,8 @@ export interface RefundRequest {
   status: 'requested' | 'approved' | 'rejected' | 'completed';
   admin_note: string | null;
   created_at: string;
+  /** Every step this request has been through, oldest first. */
+  events: RefundRequestEvent[];
 }
 
 export async function getMyRefunds(token: string): Promise<RefundRequest[]> {

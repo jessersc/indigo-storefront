@@ -181,6 +181,25 @@ export default function AccountPage() {
                   </span>
                 </div>
                 {r.admin_note && <p className="text-xs text-slate-400 font-semibold mt-1">Nota: {r.admin_note}</p>}
+
+                {/* Every step, not just where it ended up: a request that was
+                    rejected and then approved otherwise looks the same as one
+                    approved first time. */}
+                {r.events?.length > 1 && (
+                  <ol className="mt-2 space-y-1">
+                    {r.events.map((e, i) => (
+                      <li key={i} className="flex gap-2 text-[11px]">
+                        <span className="w-1 h-1 rounded-full bg-kawaii-pink mt-1.5 shrink-0" />
+                        <span className="font-semibold text-slate-400">
+                          {REFUND_STATUS_LABEL[e.to_status] ?? e.to_status}
+                          {' · '}
+                          {new Date(e.created_at).toLocaleDateString('es-VE')}
+                          {e.note && ` — ${e.note}`}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </div>
             ))}
           </div>

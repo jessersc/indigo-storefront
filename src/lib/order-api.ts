@@ -25,6 +25,18 @@ export interface OrderItemDetail {
   priceBs: number;
 }
 
+/**
+ * One step in a request's history. Deliberately does not say WHO acted —
+ * "aprobado por alex@" is internal; the customer needs to know it was approved.
+ */
+export interface OrderRequestEvent {
+  from_status: string | null;
+  to_status: string;
+  note: string | null;
+  created_at: string;
+  by_customer: boolean;
+}
+
 export interface OrderRequestSummary {
   id: string;
   kind: 'refund' | 'replacement';
@@ -33,6 +45,7 @@ export interface OrderRequestSummary {
   admin_note: string | null;
   created_at: string;
   updated_at: string;
+  events: OrderRequestEvent[];
 }
 
 export interface PaymentInstructions {
