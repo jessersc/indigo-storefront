@@ -82,11 +82,35 @@ export default function SupportWidget() {
     return () => { cancelled = true; clearInterval(id); };
   }, [open, view, threadId]);
 
-  const openChat = () => {
+  /**
+   * Open the chat, restoring the conversation where it left off.
+   *
+   * Previously this always started from the greeting, so someone returning
+   * after a refresh saw an empty panel and had to explain themselves again —
+   * even though the thread and every message were still on the server. The
+   * Worker returns the last 10 messages; a guest's thread is swept after a day,
+   * a signed-in customer's is kept.
+   */
+  const openChat = async () => {
     setView('chat');
-    if (messages.length === 0) {
-      setMessages([{ from: 'bot', text: 'Hola! Soy el asistente de Indigo. Preguntame sobre pedidos, envios, pagos, reembolsos o reemplazos.' }]);
+    if (messages.length > 0) return;
+
+    if (threadId) {
+      const history = await pollThread(threadId);
+      if (history?.messages.length) {
+        lastAt.current = history.messages[history.messages.length - 1].created_at;
+        setMode(history.mode);
+        setMessages(
+          history.messages.map((m) => ({
+            from: m.sender as 'customer' | 'bot' | 'admin',
+            text: m.body,
+          })),
+        );
+        return;
+      }
     }
+
+    setMessages([{ from: 'bot', text: 'Hola! Soy el asistente de Indigo. Preguntame sobre pedidos, envios, pagos, reembolsos o reemplazos.' }]);
   };
 
   const handleSend = async () => {
@@ -110,14 +134,21 @@ export default function SupportWidget() {
       const seen = await pollThread(res.threadId);
       if (seen?.messages.length) lastAt.current = seen.messages[seen.messages.length - 1].created_at;
     } catch (err: any) {
-      // The throttle and rate limiter return a message written for the
-      // customer ("wait N seconds"); showing a generic error instead would
-      // just make them retry into the same wall.
+      /*
+        The per-conversation throttle no longer surfaces here at all — the
+        Worker absorbs it and just answers a moment later, so a customer asking
+        a quick follow-up sees the typing indicator rather than
+        "Espera 21 segundos antes de enviar otro mensaje."
+
+        What can still land here is a genuine failure: offline, or the per-IP
+        limiter after real hammering. Neither is something to put a countdown
+        on, so the message stays plain and points at a way through.
+      */
       setMessages((m) => [
         ...m,
         {
           from: 'bot',
-          text: err?.message || 'Hubo un problema al enviar tu mensaje. Intenta de nuevo o escribenos por WhatsApp.',
+          text: 'No pudimos enviar tu mensaje. Revisa tu conexion e intenta de nuevo, o escribenos por WhatsApp.',
         },
       ]);
     } finally {
