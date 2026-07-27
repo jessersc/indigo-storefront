@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { authApi } from '../../../lib/auth-api';
+import { safeNextPath } from '../../../lib/next-path';
 import { errorMessage } from '../../../lib/api-error';
 import { AuthCard, AuthError, authInputClass, authButtonClass } from '../../../components/account/AuthCard';
 import { useAuth } from '../../../context/AuthContext';
@@ -11,8 +12,12 @@ import GoogleSignInButton from '../../../components/account/GoogleSignInButton';
 import FacebookSignInButton from '../../../components/account/FacebookSignInButton';
 import Turnstile, { turnstileEnabled } from '../../../components/Turnstile';
 
-export default function RegisterPage() {
+function RegisterContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Carried through registration and verification so someone who creates an
+  // account from the checkout is returned to it, cart intact.
+  const next = safeNextPath(searchParams.get('next'));
   const { setSession } = useAuth();
   const [form, setForm] = useState({ name: '', email: '', password: '', phone: '' });
   const [error, setError] = useState('');
@@ -38,7 +43,9 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await authApi.register({ ...form, turnstileToken });
-      router.push(`/account/verify?email=${encodeURIComponent(form.email)}`);
+      router.push(
+        `/account/verify?email=${encodeURIComponent(form.email)}&next=${encodeURIComponent(next)}`,
+      );
     } catch (err: any) {
       setError(errorMessage(err, 'No se pudo crear la cuenta.'));
     } finally {
@@ -72,8 +79,21 @@ export default function RegisterPage() {
           {loading ? 'Creando...' : 'Crear cuenta'}
         </button>
       </form>
-      <GoogleSignInButton onSession={(r) => { setSession(r); router.push('/account'); }} />
-      <FacebookSignInButton onSession={(r) => { setSession(r); router.push('/account'); }} />
+      <GoogleSignInButton onSession={(r) => { setSession(r); router.push(next); }} />
+      <FacebookSignInButton onSession={(r) => { setSession(r); router.push(next); }} />
     </AuthCard>
+  );
+}
+
+/*
+  useSearchParams() forces this subtree out of static prerendering, so it needs
+  a Suspense boundary or `next build` fails outright on this route. The verify
+  page already had one for the same reason.
+*/
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="py-16 text-center font-bold text-kawaii-pink">Cargando...</div>}>
+      <RegisterContent />
+    </Suspense>
   );
 }

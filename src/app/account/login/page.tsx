@@ -1,17 +1,23 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../../../context/AuthContext';
 import { authApi } from '../../../lib/auth-api';
 import { errorMessage } from '../../../lib/api-error';
+import { safeNextPath } from '../../../lib/next-path';
 import { AuthCard, AuthError, authInputClass, authButtonClass } from '../../../components/account/AuthCard';
 import GoogleSignInButton from '../../../components/account/GoogleSignInButton';
 import FacebookSignInButton from '../../../components/account/FacebookSignInButton';
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Sanitised: an unchecked `next` on a login page is an open redirect, and a
+  // phishing link that bounces off our own domain is worth more than one that
+  // does not.
+  const next = safeNextPath(searchParams.get('next'));
   const { setSession } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -25,10 +31,12 @@ export default function LoginPage() {
     try {
       const result = await authApi.login({ email, password });
       setSession(result);
-      router.push('/account');
+      router.push(next);
     } catch (err: any) {
       if (err.needsVerification) {
-        router.push(`/account/verify?email=${encodeURIComponent(email)}`);
+        router.push(
+          `/account/verify?email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`,
+        );
         return;
       }
       setError(errorMessage(err, 'No se pudo iniciar sesion.'));
@@ -44,7 +52,12 @@ export default function LoginPage() {
       footer={
         <>
           Nueva aqui?{' '}
-          <Link href="/account/register" className="text-kawaii-pink font-black">Crear cuenta</Link>
+          <Link
+            href={`/account/register?next=${encodeURIComponent(next)}`}
+            className="text-kawaii-pink font-black"
+          >
+            Crear cuenta
+          </Link>
         </>
       }
     >
@@ -61,8 +74,18 @@ export default function LoginPage() {
           {loading ? 'Entrando...' : 'Entrar'}
         </button>
       </form>
-      <GoogleSignInButton onSession={(r) => { setSession(r); router.push('/account'); }} />
-      <FacebookSignInButton onSession={(r) => { setSession(r); router.push('/account'); }} />
+      <GoogleSignInButton onSession={(r) => { setSession(r); router.push(next); }} />
+      <FacebookSignInButton onSession={(r) => { setSession(r); router.push(next); }} />
     </AuthCard>
+  );
+}
+
+// See the note on RegisterPage: useSearchParams() needs a Suspense boundary or
+// the route cannot be prerendered and the build fails.
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="py-16 text-center font-bold text-kawaii-pink">Cargando...</div>}>
+      <LoginContent />
+    </Suspense>
   );
 }

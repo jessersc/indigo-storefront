@@ -5,12 +5,15 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { authApi } from '../../../lib/auth-api';
 import { errorMessage } from '../../../lib/api-error';
 import { useAuth } from '../../../context/AuthContext';
+import { safeNextPath } from '../../../lib/next-path';
 import { AuthCard, AuthError, authInputClass, authButtonClass } from '../../../components/account/AuthCard';
 
 function VerifyContent() {
   const router = useRouter();
   const params = useSearchParams();
   const email = params.get('email') || '';
+  // Last leg of the sign-in journey that started at the checkout.
+  const next = safeNextPath(params.get('next'));
   const { setSession } = useAuth();
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
@@ -24,7 +27,7 @@ function VerifyContent() {
     try {
       const result = await authApi.verify({ email, code });
       setSession(result);
-      router.push('/account');
+      router.push(next);
     } catch (err: any) {
       setError(errorMessage(err, 'Codigo invalido.'));
     } finally {

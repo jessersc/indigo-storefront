@@ -8,6 +8,8 @@ import { calculatePrices } from '../lib/currency';
 import CryptoPayment from './CryptoPayment';
 import CasheaPayment from './CasheaPayment';
 import Turnstile, { turnstileEnabled } from './Turnstile';
+import CheckoutIdentityGate from './CheckoutIdentityGate';
+import { rememberGuestOrder } from '../lib/guest-orders';
 import { validateCedula, validateEmail, validateVenezuelanMobile } from '../lib/validation';
 import {
   PAYMENT_METHOD_DEFS,
@@ -30,7 +32,7 @@ import {
 // Types
 // ─────────────────────────────────────────────
 
-type Step = 'form' | 'payment' | 'success' | 'pending';
+type Step = 'identity' | 'form' | 'payment' | 'success' | 'pending';
 type PaymentMethod = PaymentMethodId;
 
 interface FormData {
@@ -118,8 +120,18 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
   const shippingPriceMessage = (assets || []).find((a: any) => a.asset_type === 'shipping_price_message')
     ?.html_content;
 
-  // ── Step State ──
-  const [step, setStep] = useState<Step>('form');
+  /*
+    ── Step State ──
+
+    A signed-in customer skips straight to the form: their address was already
+    verified when they registered. A guest starts at the identity gate and has
+    to confirm their email before anything else, because for them the order is
+    the only record they will have.
+  */
+  const [step, setStep] = useState<Step>(() => (user ? 'form' : 'identity'));
+  /** Set once a guest has proved control of their address. */
+  const [guestToken, setGuestToken] = useState('');
+  const guestTokenRef = useRef('');
   const [orderNumber, setOrderNumber] = useState('');
   /**
    * Whether the order number may be SHOWN to the customer.
@@ -524,7 +536,13 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
     }
 
     const order = buildOrder(orderNum);
-    const result = await saveOrderToD1(order, { token, turnstileToken });
+    const result = await saveOrderToD1(order, {
+      token,
+      turnstileToken,
+      // Read from the ref: a guest may have verified moments ago on the same
+      // tick, and state is not visible until the next render.
+      guestToken: guestTokenRef.current,
+    });
     if (!result.success) {
       setStockShortfalls(result.shortfalls ?? []);
       setPaymentError(
@@ -549,6 +567,22 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
     setOrderRegistered(result.status !== 'draft');
     setStockWarnings(result.stockWarnings ?? []);
     setContactMessage(result.contactMessage ?? '');
+
+    /*
+      A guest has nothing server-side linking them to this order, so the
+      reference is kept in their browser. Only recorded once the order really
+      exists — remembering a draft would leave them holding a number that never
+      became anything.
+    */
+    if (!user && result.status !== 'draft') {
+      rememberGuestOrder({
+        orderNumber: orderNum,
+        email: formData.email.trim().toLowerCase(),
+        placedAt: new Date().toISOString(),
+        totalUsd,
+        itemCount: cartItems.reduce((sum, i) => sum + i.quantity, 0),
+      });
+    }
     return true;
   };
 
@@ -599,6 +633,19 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
   const handlePaymentSuccess = async (method: string, transactionId?: string) => {
     const orderNum = orderNumber || generateOrderNumber();
     if (!orderNumber) setOrderNumber(orderNum);
+
+    // The gateway has confirmed, so the draft is now a real order and the
+    // number is safe to show and to keep.
+    setOrderRegistered(true);
+    if (!user) {
+      rememberGuestOrder({
+        orderNumber: orderNum,
+        email: formData.email.trim().toLowerCase(),
+        placedAt: new Date().toISOString(),
+        totalUsd,
+        itemCount: cartItems.reduce((sum, i) => sum + i.quantity, 0),
+      });
+    }
 
     setCompletedOrder(buildOrder(orderNum, transactionId));
     finalizeCart();
@@ -1051,6 +1098,37 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
         >
           Volver a la tienda
         </button>
+      </div>
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // RENDER: Identity Gate (guests only)
+  // ─────────────────────────────────────────────
+
+  if (step === 'identity') {
+    return (
+      <div className="space-y-6 pb-24">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-2 text-slate-500 hover:text-kawaii-pink font-bold transition-colors cursor-pointer"
+        >
+          <ArrowLeft size={20} /> Volver al carrito
+        </button>
+
+        <CheckoutIdentityGate
+          initialEmail={formData.email}
+          onVerified={(verifiedEmail, verifiedToken) => {
+            setGuestToken(verifiedToken);
+            guestTokenRef.current = verifiedToken;
+            // Carry the confirmed address into the form so it cannot drift from
+            // the one the token vouches for -- the Worker compares them, and a
+            // mismatch would be rejected at the very end of checkout.
+            setFormData((prev) => ({ ...prev, email: verifiedEmail }));
+            setStep('form');
+            scrollToTop();
+          }}
+        />
       </div>
     );
   }

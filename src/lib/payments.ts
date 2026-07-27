@@ -134,6 +134,11 @@ export interface SaveOrderOptions {
    * catalogue in a loop. Ignored by the Worker when Turnstile is unconfigured.
    */
   turnstileToken?: string;
+  /**
+   * Proof that a code sent to the customer's address was entered back.
+   * Required by the Worker when there is no session.
+   */
+  guestToken?: string;
 }
 
 /** An item this order pushed to low/no stock, per the Worker. */
@@ -231,6 +236,7 @@ export async function saveOrderToD1(
         priceBs: item.priceBs,
       })),
       turnstileToken: opts.turnstileToken,
+      guestToken: opts.guestToken,
     };
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };

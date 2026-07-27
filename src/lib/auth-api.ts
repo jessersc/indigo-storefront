@@ -60,6 +60,21 @@ export const authApi = {
   resetPassword: (input: { email: string; code: string; password: string }) =>
     post<{ ok: true }>('/auth/reset-password', input),
 
+  /**
+   * Guest checkout. Neither of these creates an account.
+   *
+   * `requestGuestCode` always answers ok, whether or not the address has an
+   * account, so it cannot be used to find out which addresses are registered.
+   * `verifyGuestCode` returns a short-lived token that lets the Worker accept
+   * an order for that address — it proves control of the address only, and is
+   * explicitly typed so it can never stand in for a session.
+   */
+  requestGuestCode: (email: string, turnstileToken?: string) =>
+    post<{ ok: true }>('/guest/request-code', { email, turnstileToken }),
+
+  verifyGuestCode: (input: { email: string; code: string }) =>
+    post<{ ok: true; guestToken: string; expiresIn: number }>('/guest/verify-code', input),
+
   me: async (token: string): Promise<AuthUser | null> => {
     try {
       const res = await fetch(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
