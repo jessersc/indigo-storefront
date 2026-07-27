@@ -160,7 +160,20 @@ export interface StockShortfall {
 export interface SaveOrderResult {
   success: boolean;
   orderId?: string;
+  /**
+   * 'draft'   — nothing is in `orders` yet; it appears only once payment is
+   *             confirmed. This is the normal result for every gateway and for
+   *             crypto.
+   * 'pending' — a real order exists awaiting manual confirmation. Manual
+   *             methods (efectivo/zelle/binance/zinli) land here immediately,
+   *             because no gateway is coming and an admin has to see it.
+   */
   status?: string;
+  /**
+   * Secret for this draft, required to convert it into a real order without
+   * paying ("pagar despues"). Held only for the life of the checkout.
+   */
+  draftToken?: string;
   error?: string;
   /** Customer-facing message for the reason the save failed, when there is one. */
   message?: string;
@@ -173,9 +186,17 @@ export interface SaveOrderResult {
 }
 
 /**
- * Persist the order. It is always created `pending`: the Worker decides when an
- * order becomes paid, based on a gateway confirming server-to-server, and
- * ignores anything the browser claims about payment status.
+ * Register the checkout with the Worker.
+ *
+ * For every gateway method and for crypto this creates a DRAFT, not an order:
+ * nothing appears in `orders`, in the dashboard, or in the customer's history
+ * until a payment is actually confirmed server-to-server. Manual methods
+ * (efectivo/zelle/binance/zinli) are promoted to a real `pending` order right
+ * away, because no gateway is coming and an admin has to be able to see the
+ * order in order to confirm the transfer by hand.
+ *
+ * Either way the Worker decides what is paid. Nothing the browser claims about
+ * payment status is believed.
  */
 export async function saveOrderToD1(
   order: Order,
@@ -228,6 +249,7 @@ export async function saveOrderToD1(
         success: true,
         orderId: data.orderId,
         status: data.status,
+        draftToken: data.draftToken,
         businessHours: data.businessHours,
         contactMessage: data.contactMessage,
         stockWarnings: data.stockWarnings ?? [],
@@ -246,5 +268,33 @@ export async function saveOrderToD1(
   } catch (err: any) {
     console.error('saveOrderToD1 error:', err);
     return { success: false, error: err.message };
+  }
+}
+
+/**
+ * "Pagar despues" — turn an unpaid crypto draft into a real `pending` order the
+ * customer can settle later from their account.
+ *
+ * This is the hybrid half of the crypto flow: paying now promotes the draft via
+ * on-chain verification, while this promotes it on the customer's word alone,
+ * with nothing charged. Authorised by the draft token rather than the order
+ * number, so knowing a number is not enough to create an order in a stranger's
+ * name.
+ */
+export async function deferOrderPayment(
+  orderNumber: string,
+  draftToken: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${API_URL}/orders/${encodeURIComponent(orderNumber)}/defer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ draftToken }),
+    });
+    const data = (await res.json().catch(() => ({}))) as any;
+    if (res.ok && data.ok) return { success: true };
+    return { success: false, error: data.error ?? `http_${res.status}` };
+  } catch (err: any) {
+    return { success: false, error: err?.message ?? 'unreachable' };
   }
 }

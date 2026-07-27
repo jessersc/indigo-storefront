@@ -13,6 +13,7 @@ import {
   generateOrderNumber,
   generateWhatsAppLink,
   saveOrderToD1,
+  deferOrderPayment,
   type Order,
   type OrderItem,
   type StockWarning,
@@ -228,6 +229,19 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
    * solved yet or the token expired; the component re-challenges on its own.
    */
   const [turnstileToken, setTurnstileToken] = useState('');
+  /**
+   * Secret for the draft this checkout created. Required to convert it into a
+   * real order without paying ("pagar despues"), so a stranger who guesses an
+   * order number cannot create an order in someone else's name.
+   */
+  const [draftToken, setDraftToken] = useState('');
+  /**
+   * Same value, readable in the tick it is set. "Pagar despues" saves the draft
+   * and immediately defers it, and React state does not update until the next
+   * render -- reading `draftToken` there would send an empty token and get a
+   * 403 the first time, working only on a second press.
+   */
+  const draftTokenRef = useRef('');
 
   // ── PayPal State ──
   const paypalContainerRef = useRef<HTMLDivElement>(null);
@@ -513,9 +527,18 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
 
     setStockShortfalls([]);
     savedOrderRef.current = orderNum;
-    // The number is now a real order in the database, so it is finally safe to
-    // put in front of the customer. See orderRegistered.
-    setOrderRegistered(true);
+    setDraftToken(result.draftToken ?? '');
+    draftTokenRef.current = result.draftToken ?? '';
+    /*
+      Only show the number once a real order exists.
+
+      For manual methods the Worker promotes the draft immediately, so there is
+      an order to name. For gateways and crypto this is still a draft: nothing
+      is in `orders` until the payment confirms, so quoting a reference now
+      would send the customer away with a number support cannot look up — the
+      exact problem `orderRegistered` was introduced to solve.
+    */
+    setOrderRegistered(result.status !== 'draft');
     setStockWarnings(result.stockWarnings ?? []);
     setContactMessage(result.contactMessage ?? '');
     return true;
@@ -698,6 +721,41 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
     setPaymentError('');
     setStep('payment');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  /**
+   * "Pagar despues" (crypto only).
+   *
+   * Saves the draft if it is not saved yet, then asks the Worker to promote it
+   * to a real `pending` order. Nothing is charged. The customer lands on the
+   * pending screen and can finish the transfer from their account.
+   */
+  const handleDeferPayment = async () => {
+    setIsProcessing(true);
+    setPaymentError('');
+    try {
+      if (!(await ensureOrderSaved(orderNumber))) return;
+
+      // ensureOrderSaved has just set this via setDraftToken, but React state
+      // is not visible until the next render -- so read it from the ref-like
+      // result path instead of trusting the state variable in this same tick.
+      const tokenForDefer = draftTokenRef.current;
+      const result = await deferOrderPayment(orderNumber, tokenForDefer);
+      if (!result.success) {
+        setPaymentError('No pudimos guardar tu pedido. Intenta de nuevo.');
+        return;
+      }
+
+      setCompletedOrder(buildOrder(orderNumber));
+      setOrderRegistered(true);
+      finalizeCart();
+      setStep('pending');
+      scrollToTop();
+    } catch {
+      setPaymentError('No pudimos guardar tu pedido. Intenta de nuevo.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // ─────────────────────────────────────────────
@@ -1373,19 +1431,50 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
 
         {/* ── Crypto (USDT / USDC) ── */}
         {formData.paymentMethod === 'crypto' && (
-          <CryptoPayment
-            orderNumber={orderNumber}
-            totalUsd={totalUsd}
-            authToken={token}
-            ensureOrderSaved={async () => {
-              setCompletedOrder(buildOrder(orderNumber));
-              await ensureOrderSaved(orderNumber);
-            }}
-            onConfirmed={() => {
-              finalizeCart();
-              setStep('success');
-            }}
-          />
+          <>
+            <CryptoPayment
+              orderNumber={orderNumber}
+              totalUsd={totalUsd}
+              authToken={token}
+              ensureOrderSaved={async () => {
+                setCompletedOrder(buildOrder(orderNumber));
+                await ensureOrderSaved(orderNumber);
+              }}
+              onConfirmed={() => {
+                finalizeCart();
+                setStep('success');
+              }}
+            />
+
+            {/*
+              The hybrid half of crypto. Paying now promotes the draft through
+              on-chain verification; this promotes it on the customer's word,
+              with nothing charged, so the order exists and can be settled later
+              from their account. Only offered for crypto -- a gateway method
+              has no equivalent "I will pay later", and a manual method is
+              already a pending order.
+            */}
+            <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm space-y-3">
+              <h4 className="font-black text-slate-800">¿Prefieres pagar despues?</h4>
+              <p className="text-sm text-slate-500 font-semibold leading-relaxed">
+                Guardamos tu pedido y lo dejamos pendiente de pago. Podras completar
+                la transferencia cuando quieras desde <strong>Mi cuenta → Mis ordenes</strong>,
+                donde encontraras la direccion y el monto exactos.
+              </p>
+              <p className="text-xs text-slate-400 font-semibold">
+                No apartamos el inventario hasta que el pago se confirme, asi que un
+                producto con pocas unidades podria agotarse mientras tanto.
+              </p>
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={handleDeferPayment}
+                className="w-full py-3.5 rounded-full border-2 border-kawaii-pink text-kawaii-pink font-black text-xs uppercase tracking-widest hover:bg-kawaii-pink hover:text-white transition-all disabled:opacity-60"
+              >
+                {isProcessing ? 'GUARDANDO...' : 'GUARDAR Y PAGAR DESPUES'}
+              </button>
+            </div>
+          </>
         )}
 
         {/* Scroll to top */}
