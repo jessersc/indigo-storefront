@@ -49,13 +49,27 @@ export interface StoreConfig {
 const API_URL = process.env.INDIGO_API_URL || 'http://localhost:8787';
 
 /**
- * Kept short on purpose. This is the banner, logo, favicon, social icons and
- * shipping messages -- the things an operator edits in the dashboard and then
- * immediately checks on the storefront. At 60s the edit appeared not to have
- * saved at all, which is worse than the cost of revalidating more often: it is
- * one small JSON fetch, and only on the first request after the window.
+ * This is the banner, logo, favicon, social icons and shipping messages -- the
+ * things an operator edits in the dashboard and then immediately checks on the
+ * storefront. It used to be 10 seconds for exactly that reason: at 60s an edit
+ * looked like it had not saved.
+ *
+ * That 10s was extremely expensive, and not because of this fetch. In the App
+ * Router a route's revalidate is the MINIMUM of every fetch inside it, and this
+ * one runs in the shared layout -- so it set the window for EVERY page on the
+ * site. Each expiry plus a request meant a full page regeneration: an ISR
+ * write, a function invocation and origin transfer. With only a handful of real
+ * visitors, crawler traffic alone drove 86k of the 200k monthly ISR writes.
+ *
+ * The window is now long, and freshness comes from `revalidateTag` instead:
+ * saving in the dashboard calls /api/revalidate, which drops this tag and the
+ * next request rebuilds immediately. The operator sees the edit at once AND
+ * idle traffic stops regenerating pages. See app/api/revalidate/route.ts.
  */
-const REVALIDATE_SECONDS = 10;
+const REVALIDATE_SECONDS = 600;
+
+/** Cache tag dropped by /api/revalidate when the dashboard saves. */
+export const STORE_CONFIG_TAG = 'store-config';
 const FETCH_TIMEOUT_MS = 2500;
 
 function fallbackVideos(): Video[] {
@@ -91,7 +105,7 @@ export const getStoreConfig = cache(async (): Promise<StoreConfig> => {
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     const res = await fetch(`${API_URL}/config`, {
       signal: controller.signal,
-      next: { revalidate: REVALIDATE_SECONDS },
+      next: { revalidate: REVALIDATE_SECONDS, tags: [STORE_CONFIG_TAG] },
     });
     clearTimeout(timer);
     if (!res.ok) return staticFallback();

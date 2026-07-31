@@ -29,6 +29,9 @@ const API_URL = process.env.INDIGO_API_URL || 'http://localhost:8787';
  * tells them it is gone; it cannot oversell.
  */
 const REVALIDATE_SECONDS = 300;
+
+/** Cache tag dropped by /api/revalidate when the catalogue changes. */
+export const CATALOG_TAG = 'catalog';
 const FETCH_TIMEOUT_MS = 4000;
 
 export interface CatalogProduct {
@@ -127,7 +130,7 @@ export const getCatalog = cache(async (): Promise<Catalog> => {
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     const res = await fetch(`${API_URL}/catalog`, {
       signal: controller.signal,
-      next: { revalidate: REVALIDATE_SECONDS },
+      next: { revalidate: REVALIDATE_SECONDS, tags: [CATALOG_TAG] },
     });
     clearTimeout(timer);
     if (!res.ok) return staticFallback();
