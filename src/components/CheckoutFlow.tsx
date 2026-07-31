@@ -9,6 +9,7 @@ import CryptoPayment from './CryptoPayment';
 import CasheaPayment from './CasheaPayment';
 import Turnstile, { turnstileEnabled } from './Turnstile';
 import CheckoutIdentityGate from './CheckoutIdentityGate';
+import StoreDialog from './StoreDialog';
 import { rememberGuestOrder } from '../lib/guest-orders';
 import { validateCedula, validateEmail, validateVenezuelanMobile } from '../lib/validation';
 import {
@@ -203,6 +204,8 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
    * order number cannot create an order in someone else's name.
    */
   const [draftToken, setDraftToken] = useState('');
+  /** Validation message shown in the store's own dialog. Empty = closed. */
+  const [dialogMessage, setDialogMessage] = useState('');
   /**
    * Same value, readable in the tick it is set. "Pagar despues" saves the draft
    * and immediately defers it, and React state does not update until the next
@@ -764,7 +767,10 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
     setIsSubmitted(true);
     const validationError = formValidationError();
     if (validationError) {
-      alert(validationError);
+      // A styled dialog, not window.alert(): a native alert is a grey OS box
+      // with the domain in the title bar, which makes "your phone needs a
+      // country code" look like the site broke.
+      setDialogMessage(validationError);
       return;
     }
     const num = generateOrderNumber();
@@ -1985,6 +1991,13 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
           <ArrowUp size={24} />
         </button>
       )}
+
+      {/* Form validation, in the store's own voice rather than a browser alert. */}
+      <StoreDialog
+        open={dialogMessage !== ''}
+        message={dialogMessage}
+        onClose={() => setDialogMessage('')}
+      />
     </div>
   );
 }
