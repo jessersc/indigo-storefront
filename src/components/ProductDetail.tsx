@@ -11,6 +11,7 @@ import {
   STOCK_STATUS_CLASSES,
 } from '../lib/stock-status';
 import { resolvePaymentMethods } from '../lib/payment-methods';
+import { getOptimizedImage, getImageSrcSet, IMAGE_PLACEHOLDER } from '../lib/image';
 
 interface Product {
   ItemID: string;
@@ -104,8 +105,17 @@ export default function ProductDetail({ product, variants, onAddToCart, onChecko
         <div className="bg-white rounded-[40px] p-8 shadow-xl border border-slate-50">
           <div className="aspect-square relative overflow-hidden rounded-[32px] bg-slate-50">
             <img
-              src={displayImage}
+              src={getOptimizedImage(displayImage, 800)}
+              srcSet={getImageSrcSet(displayImage)}
+              sizes="(max-width: 1024px) 100vw, 50vw"
               alt={product.Product}
+              // The detail image is the page's largest paint -- eager, not lazy.
+              fetchPriority="high"
+              decoding="async"
+              onError={(e) => {
+                (e.target as HTMLImageElement).srcset = '';
+                (e.target as HTMLImageElement).src = IMAGE_PLACEHOLDER;
+              }}
               className="w-full h-full object-contain p-4"
             />
 
@@ -181,9 +191,11 @@ export default function ProductDetail({ product, variants, onAddToCart, onChecko
                       <div className="flex items-center gap-3">
                         {v.image_path && (
                           <div className="w-10 h-10 rounded-full overflow-hidden border border-slate-100 flex-shrink-0 bg-slate-50">
-                            <img 
-                              src={v.image_path} 
-                              alt={v.variant_name} 
+                            <img
+                              src={getOptimizedImage(v.image_path, 400)}
+                              alt={v.variant_name}
+                              loading="lazy"
+                              decoding="async"
                               className="w-full h-full object-cover"
                             />
                           </div>

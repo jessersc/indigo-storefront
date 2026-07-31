@@ -17,6 +17,7 @@ import {
   STOCK_STATUS_CLASSES,
 } from '../lib/stock-status';
 import { useFavorites } from '../context/FavoritesContext';
+import { getOptimizedImage, getImageSrcSet, IMAGE_PLACEHOLDER } from '../lib/image';
 
 // Bundled snapshots: used only when a caller does not pass live D1 data.
 const fallbackProducts: CatalogProduct[] = ((productsData as any)[0]?.results) || [];
@@ -147,11 +148,16 @@ export default function ProductGrid({
 
           {/* Image Container */}
           <div className="relative aspect-square overflow-hidden bg-slate-50 p-4">
-            <img 
-              src={product.Image} 
+            <img
+              src={getOptimizedImage(product.Image, 400)}
+              srcSet={getImageSrcSet(product.Image)}
+              sizes="(max-width: 768px) 50vw, 25vw"
               alt={product.Product}
+              loading="lazy"
+              decoding="async"
               onError={(e) => {
-                (e.target as any).src = 'https://images.unsplash.com/photo-1551488831-00ddcb6c6bd3?auto=format&fit=crop&q=80&w=400';
+                (e.target as HTMLImageElement).srcset = '';
+                (e.target as HTMLImageElement).src = IMAGE_PLACEHOLDER;
               }}
               className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-700"
             />

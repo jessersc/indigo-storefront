@@ -8,6 +8,7 @@ import {
   type OrderDetail,
   type OrderCredentials,
 } from '../lib/order-api';
+import { getOptimizedImage } from '../lib/image';
 
 /**
  * One order, in full — the same component for a signed-in customer and for a
@@ -212,12 +213,21 @@ export default function OrderDetailView({
         <div className="divide-y divide-[#ffe0ef]">
           {order.items.map((item, i) => (
             <div key={`${item.productId}-${i}`} className="flex items-start justify-between gap-3 py-3">
-              <div className="min-w-0">
+              <div className="flex items-start gap-3 min-w-0">
+                <img
+                  src={getOptimizedImage(item.image, 400)}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="w-12 h-12 rounded-xl object-cover border border-[#ffe0ef] bg-white shrink-0"
+                />
+                <div className="min-w-0">
                 <p className="font-bold text-slate-700 text-sm">{item.name ?? 'Producto'}</p>
                 {item.variantId && (
                   <p className="text-xs font-semibold text-slate-400">Modelo: {item.variantId}</p>
                 )}
                 <p className="text-xs font-bold text-slate-400">Cantidad: {item.quantity}</p>
+                </div>
               </div>
               <p className="font-black text-slate-700 text-sm shrink-0">
                 ${(item.priceUsd * item.quantity).toFixed(2)}

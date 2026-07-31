@@ -4,6 +4,7 @@ import React from 'react';
 import { X, Minus, Plus, ShoppingBag, Trash2, Check } from 'lucide-react';
 import { calculatePrices } from '../lib/currency';
 import { useStorefront, type CartItem } from '../context/StorefrontContext';
+import { getOptimizedImage } from '../lib/image';
 
 interface CartModalProps {
   isOpen: boolean;
@@ -133,7 +134,7 @@ export default function CartModal({ isOpen, onClose, onCheckout }: CartModalProp
                   </button>
 
                   {image && (
-                    <img src={image} className="w-14 h-14 rounded-2xl object-cover flex-shrink-0" alt={item.name || item.Product} />
+                    <img src={getOptimizedImage(image, 400)} loading="lazy" decoding="async" className="w-14 h-14 rounded-2xl object-cover flex-shrink-0" alt={item.name || item.Product} />
                   )}
 
                   <div className="flex-1 min-w-0">

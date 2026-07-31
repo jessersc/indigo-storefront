@@ -15,7 +15,20 @@ import categoriesData from './categories.json';
 import collectionsData from './collections.json';
 
 const API_URL = process.env.INDIGO_API_URL || 'http://localhost:8787';
-const REVALIDATE_SECONDS = 60;
+/**
+ * How long a fetched catalogue stays fresh.
+ *
+ * This is the single biggest driver of D1 usage: one `/catalog` call reads
+ * roughly 3,700 rows, and the free allowance is 5M rows/day. At 60s the
+ * endpoint alone was running at about twice the allowance.
+ *
+ * Five minutes is safe for stock specifically, because the number shown here is
+ * never what a purchase is validated against -- checkout re-checks availability
+ * and takes a server-side hold before an order can exist. A slightly stale
+ * count on a listing can at worst send someone to a product page that then
+ * tells them it is gone; it cannot oversell.
+ */
+const REVALIDATE_SECONDS = 300;
 const FETCH_TIMEOUT_MS = 4000;
 
 export interface CatalogProduct {

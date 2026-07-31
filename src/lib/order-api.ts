@@ -23,6 +23,11 @@ export interface OrderItemDetail {
   quantity: number;
   priceUsd: number;
   priceBs: number;
+  /**
+   * Joined from the catalogue at read time, not stored on the line. Null when
+   * the product was deleted or never had a photo.
+   */
+  image: string | null;
 }
 
 /**

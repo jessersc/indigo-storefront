@@ -9,7 +9,7 @@ import { useFavorites } from '../context/FavoritesContext';
 import CartModal from './CartModal';
 import SupportWidget from './SupportWidget';
 import { CheckCircle2, User, Heart, Search, X, Package, Tag, ChevronDown, Settings } from 'lucide-react';
-import { getOptimizedImage } from '../lib/image';
+import { getOptimizedImage, IMAGE_PLACEHOLDER } from '../lib/image';
 import { calculatePrices } from '../lib/currency';
 import { searchProducts, type SearchHit } from '../lib/search-api';
 
@@ -372,11 +372,11 @@ export default function StorefrontShell({ children }: StorefrontShellProps) {
                         className="flex items-center gap-3 p-2 rounded-2xl hover:bg-gradient-to-r hover:from-kawaii-light-pink/5 hover:to-kawaii-light-pink/20 transition-all cursor-pointer border border-transparent hover:border-kawaii-pink/20 group"
                       >
                         <img 
-                          src={getOptimizedImage(item.image, 80)} 
+                          src={getOptimizedImage(item.image, 400)} 
                           className="w-12 h-12 rounded-xl object-contain bg-slate-50 border border-slate-100 group-hover:scale-105 transition-transform" 
                           alt={item.name} 
                           onError={(e) => {
-                            (e.target as any).src = 'https://images.unsplash.com/photo-1551488831-00ddcb6c6bd3?auto=format&fit=crop&q=80&w=400';
+                            (e.target as HTMLImageElement).srcset = ''; (e.target as HTMLImageElement).src = IMAGE_PLACEHOLDER;
                           }}
                         />
                         <div className="flex-1 min-w-0">

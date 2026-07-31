@@ -12,6 +12,7 @@ import CheckoutIdentityGate from './CheckoutIdentityGate';
 import StoreDialog from './StoreDialog';
 import { rememberGuestOrder } from '../lib/guest-orders';
 import { validateCedula, validateEmail, validateVenezuelanMobile } from '../lib/validation';
+import { getOptimizedImage } from '../lib/image';
 import {
   PAYMENT_METHOD_DEFS,
   resolvePaymentMethods,
@@ -941,7 +942,9 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
             <div key={item.id} className="flex gap-3 items-center">
               {displayImage && (
                 <img
-                  src={displayImage}
+                  src={getOptimizedImage(displayImage, 400)}
+                  loading="lazy"
+                  decoding="async"
                   className="w-10 h-10 rounded-xl object-cover border border-[#ffe0ef] bg-white flex-shrink-0"
                   alt={item.name}
                 />
@@ -1634,7 +1637,9 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
                     >
                       {displayImage && (
                         <img
-                          src={displayImage}
+                          src={getOptimizedImage(displayImage, 400)}
+                          loading="lazy"
+                          decoding="async"
                           className="w-12 h-12 rounded-xl object-cover border border-[#ffe0ef] bg-white flex-shrink-0"
                           alt={item.name}
                         />
