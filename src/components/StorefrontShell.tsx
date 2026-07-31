@@ -195,8 +195,10 @@ export default function StorefrontShell({ children }: StorefrontShellProps) {
             <div className="relative group inline-block">
               <span className="dropdown-toggle-ref">Categorías ♡</span>
               <div className="dropdown-panel-ref">
+                {/* Goes to the index, not the home page. "Ver todo" landing on
+                    "/" was the same dead end the order emails had. */}
                 <Link
-                  href="/"
+                  href="/categorias"
                   className="dropdown-item-ref col-span-full border-b border-[#ffd2e9] mb-2 pb-3 text-kawaii-pink font-bold"
                 >
                   Ver Todo →
@@ -218,7 +220,7 @@ export default function StorefrontShell({ children }: StorefrontShellProps) {
               <span className="dropdown-toggle-ref">Colecciones ♡</span>
               <div className="dropdown-panel-ref">
                 <Link
-                  href="/"
+                  href="/colecciones"
                   className="dropdown-item-ref col-span-full border-b border-[#ffd2e9] mb-2 pb-3 text-kawaii-pink font-bold"
                 >
                   Ver Todo →
