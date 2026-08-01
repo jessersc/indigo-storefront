@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useStorefront } from '../context/StorefrontContext';
-import type { CatalogProduct, CatalogVariant } from '../lib/catalog';
+import { NEW_PRODUCT_COUNT, type CatalogProduct, type CatalogVariant } from '../lib/catalog';
 import ProductGrid from './ProductGrid';
 import { calculatePrices } from '../lib/currency';
 import SocialVideos from './SocialVideos';
@@ -326,8 +326,11 @@ function HomeContent({ products, variants }: HomeContentProps) {
           activeCategory={null} 
           activeCollection={null} 
           activePromotion={activePromotion}
-          limit={!activePromotion ? 15 : undefined}
-          randomize={!activePromotion}
+          // The 20 most recently added products, newest first -- the same 20
+          // that carry the "Nuevo" badge (NEW_PRODUCT_COUNT), so the section
+          // and the marks agree. Promotions show every discounted item instead.
+          limit={!activePromotion ? NEW_PRODUCT_COUNT : undefined}
+          newestFirst={!activePromotion}
           onAddToCart={addToCart} 
           onProductClick={(p) => {
             const slug = toSlug(p.Product, p.ItemID);

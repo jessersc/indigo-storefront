@@ -6,7 +6,7 @@ import { ShoppingCart, Heart } from 'lucide-react';
 import productsData from '../lib/products.json';
 import variantsData from '../lib/variants.json';
 import {
-  toDisplayProduct, visibleProducts, newestProductIds,
+  toDisplayProduct, visibleProducts, newestProductIds, newestProducts,
   type CatalogProduct, type CatalogVariant, type DisplayProduct,
 } from '../lib/catalog';
 import { HIDE_PRODUCTS_WITHOUT_IMAGE, useStorefront } from '../context/StorefrontContext';
@@ -31,7 +31,16 @@ interface ProductGridProps {
   activeCollection: string | null;
   activePromotion?: boolean;
   limit?: number;
-  randomize?: boolean;
+  /**
+   * Order newest-first instead of catalogue order.
+   *
+   * Replaces a `randomize` prop that shuffled with Math.random(). Combined with
+   * `limit` that meant the home page drew a different arbitrary handful on
+   * every render pass -- the "products keep refreshing randomly" report. The
+   * home page is meant to show the most recently added items, which is a
+   * stable answer, so it is sorted rather than shuffled.
+   */
+  newestFirst?: boolean;
   onAddToCart: (product: any) => void;
   onProductClick: (product: any) => void;
 }
@@ -43,8 +52,8 @@ export default function ProductGrid({
   activeCollection, 
   activePromotion,
   limit,
-  randomize,
-  onAddToCart, 
+  newestFirst,
+  onAddToCart,
   onProductClick 
 }: ProductGridProps) {
   const router = useRouter();
@@ -56,13 +65,26 @@ export default function ProductGrid({
 
   // Rebuilt when the catalog or the rates change, so a rate edit in the
   // dashboard reprices the grid without a rebuild.
-  const products: DisplayProduct[] = useMemo(() => {
+  const { products, recencyRank } = useMemo(() => {
     const list = HIDE_PRODUCTS_WITHOUT_IMAGE ? visibleProducts(rawProducts) : rawProducts;
-    // Computed over the FULL catalogue, not the filtered view: "new" should mean
-    // the same product wherever it appears. Deciding per-view would badge the
-    // 20 newest of whatever category happened to be open.
-    const newest = newestProductIds(rawProducts);
-    return list.map((p) => toDisplayProduct(p, rates, newest));
+    // Computed over the whole SHOWABLE catalogue, not the filtered view: "new"
+    // should mean the same product wherever it appears. Deciding per-view would
+    // badge the 20 newest of whatever category happened to be open.
+    //
+    // It is `list`, not rawProducts, on purpose -- products with no photo are
+    // hidden, and right now the 20 newest rows by timestamp are ALL photoless,
+    // so measuring against the raw catalogue put every badge on a product that
+    // never renders and the "Nuevo" mark vanished from the site entirely.
+    const newest = newestProductIds(list);
+    // Full recency ordering from the same helper that decides the badge, so
+    // "sorted newest-first" and "marked Nuevo" can never disagree.
+    const ranked = new Map(
+      newestProducts(list, list.length).map((p, i) => [String(p.id), i] as const),
+    );
+    return {
+      products: list.map((p) => toDisplayProduct(p, rates, newest)) as DisplayProduct[],
+      recencyRank: ranked,
+    };
   }, [rawProducts, rates]);
 
   const handleBuyNow = (e: React.MouseEvent, product: any) => {
@@ -88,12 +110,16 @@ export default function ProductGrid({
       return true;
     });
 
-    if (randomize) {
-      list = [...list].sort(() => Math.random() - 0.5);
+    if (newestFirst) {
+      list = [...list].sort(
+        (a, b) =>
+          (recencyRank.get(a.ItemID) ?? Number.MAX_SAFE_INTEGER) -
+          (recencyRank.get(b.ItemID) ?? Number.MAX_SAFE_INTEGER),
+      );
     }
 
     return limit ? list.slice(0, limit) : list;
-  }, [products, activeCategory, activeCollection, activePromotion, randomize, limit]);
+  }, [products, recencyRank, activeCategory, activeCollection, activePromotion, newestFirst, limit]);
 
   return (
     <section className="grid grid-cols-2 lg:grid-cols-4 gap-6 md:gap-10">

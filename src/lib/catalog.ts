@@ -226,7 +226,7 @@ export interface DisplayProduct {
 export const NEW_PRODUCT_COUNT = 20;
 
 /**
- * Ids of the N most recently created products.
+ * The N most recently added products, newest first.
  *
  * The badge used to be rendered as the else-branch of the discount badge, so
  * every product that simply wasn't on sale claimed to be new -- which, with no
@@ -234,17 +234,47 @@ export const NEW_PRODUCT_COUNT = 20;
  *
  * Rows with no created_at sort last rather than first: a missing timestamp is
  * unknown, not brand new.
+ *
+ * WHY THE ID TIEBREAK: created_at is far from unique. A bulk import stamps its
+ * whole batch with one timestamp -- the Round 5 catalogue merge left **281
+ * products sharing 2026-07-31T21:38:57.379Z**, and an earlier import left 757
+ * on a single value. Sorting on the timestamp alone therefore leaves hundreds
+ * of rows tied for first place, and since Array.sort is stable the winners are
+ * decided by whatever order the Worker's SQL happened to return -- which SQLite
+ * does not guarantee between calls. The set silently reshuffled every time the
+ * catalogue cache lapsed. Falling back to descending id makes it deterministic
+ * and matches "the last rows in the product table", since imports append.
+ *
+ * Pass the list customers can actually SEE, not the raw catalogue: of the 20
+ * newest rows by timestamp, zero currently have a photo, so a badge computed
+ * over everything lands entirely on hidden products and appears nowhere.
  */
+export function newestProducts(
+  products: CatalogProduct[],
+  count = NEW_PRODUCT_COUNT,
+): CatalogProduct[] {
+  const at = (p: CatalogProduct) =>
+    p.created_at ? new Date(p.created_at).getTime() : Number.NEGATIVE_INFINITY;
+  // parseFloat, so a variant id like "1045.1" sorts just after its parent
+  // rather than being read as a different magnitude entirely.
+  const seq = (p: CatalogProduct) => Number.parseFloat(String(p.id)) || 0;
+
+  return [...products]
+    .sort(
+      (a, b) =>
+        at(b) - at(a) ||
+        seq(b) - seq(a) ||
+        String(b.id).localeCompare(String(a.id)),
+    )
+    .slice(0, count);
+}
+
+/** Ids of the N newest products, for the "Nuevo" badge. */
 export function newestProductIds(
   products: CatalogProduct[],
   count = NEW_PRODUCT_COUNT,
 ): Set<string> {
-  const stamped = products.map((p) => ({
-    id: String(p.id),
-    at: p.created_at ? new Date(p.created_at).getTime() : Number.NEGATIVE_INFINITY,
-  }));
-  stamped.sort((a, b) => b.at - a.at);
-  return new Set(stamped.slice(0, count).map((p) => p.id));
+  return new Set(newestProducts(products, count).map((p) => String(p.id)));
 }
 
 /**
