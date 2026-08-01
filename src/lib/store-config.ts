@@ -181,7 +181,9 @@ export const getStoreConfig = cache(async (): Promise<StoreConfig> => {
       // blanks out the storefront chrome.
       assets: data.assets && data.assets.length > 0 ? data.assets : fallback.assets,
       rates: data.rates ?? fallback.rates,
-      videos: data.videos && data.videos.length > 0 ? data.videos : fallback.videos,
+      videos: await withResolvedPosters(
+        data.videos && data.videos.length > 0 ? data.videos : fallback.videos,
+      ),
     };
   } catch {
     return staticFallback();
