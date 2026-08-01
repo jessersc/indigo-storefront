@@ -1,7 +1,7 @@
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from 'next/server';
-import { STORE_CONFIG_TAG } from '../../../lib/store-config';
-import { CATALOG_TAG } from '../../../lib/catalog';
+import { STORE_CONFIG_TAG, getStoreConfig } from '../../../lib/store-config';
+import { CATALOG_TAG, getCatalog } from '../../../lib/catalog';
 
 /**
  * On-demand cache invalidation, called by the Worker after an admin write.
@@ -58,12 +58,33 @@ export async function POST(request: Request) {
   const rejected = tags.filter((t) => !KNOWN_TAGS.has(t));
 
   for (const tag of accepted) {
-    // `{ expire: 0 }`, not profile 'max'. 'max' is stale-while-revalidate: the
-    // operator's first reload after saving would still show the OLD value,
-    // which is precisely the confusion the short window existed to avoid. The
-    // single-argument form has the right semantics but is deprecated in 16.x.
-    revalidateTag(tag, { expire: 0 });
+    // 'max', NOT `{ expire: 0 }`.
+    //
+    // The object form is a cacheLife profile, and cacheLife only applies when
+    // `cacheComponents` is enabled in next.config. This app does not enable it,
+    // so `{ expire: 0 }` was accepted, ignored, and invalidated nothing --
+    // measured: a price edit still took ~7 minutes to appear, healing only when
+    // the 300s window lapsed. It returned 200 the whole time, which is exactly
+    // how it went unnoticed.
+    revalidateTag(tag, 'max');
   }
 
-  return NextResponse.json({ ok: true, revalidated: accepted, ignored: rejected });
+  // 'max' is stale-while-revalidate: the first request after invalidation is
+  // served the OLD value while fresh data loads behind it. For an operator who
+  // just hit save and reloaded, that is still "my edit did not apply".
+  //
+  // So the cache is warmed here instead of leaving it to that first visitor.
+  // These calls re-run the same tagged fetches, repopulating the entry before
+  // anyone asks for it, which turns stale-then-fresh into simply fresh.
+  const warmed: string[] = [];
+  await Promise.all([
+    accepted.includes(CATALOG_TAG)
+      ? getCatalog().then(() => void warmed.push(CATALOG_TAG)).catch(() => {})
+      : Promise.resolve(),
+    accepted.includes(STORE_CONFIG_TAG)
+      ? getStoreConfig().then(() => void warmed.push(STORE_CONFIG_TAG)).catch(() => {})
+      : Promise.resolve(),
+  ]);
+
+  return NextResponse.json({ ok: true, revalidated: accepted, warmed, ignored: rejected });
 }
