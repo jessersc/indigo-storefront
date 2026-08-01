@@ -17,7 +17,20 @@ import type { NextConfig } from "next";
  * restrict WHICH ORIGINS may serve scripts, frames and form posts, which is
  * where the realistic third-party risk sits.
  *
- * Every origin below was taken from the code that loads it, not guessed:
+ * WHY THE PAYPAL ENTRIES ARE WILDCARDS: the origin in our code
+ * (`https://www.paypal.com/sdk/js`) is only the loader. The SDK it returns then
+ * pulls from four more hosts that appear nowhere in this repo -- verified by
+ * fetching the bundle and reading it, not assumed:
+ *   www.sandbox.paypal.com     the buttons iframe (this store runs sandbox:
+ *                              PAYPAL_API_BASE defaults to api-m.sandbox)
+ *   c.paypal.com               fraudnet, pulled because enable-funding=card
+ *   cors.api.sandbox.paypal.com  the SDK's own XHR
+ *   www.paypalobjects.com      button art and sub-bundles
+ * A policy naming only www.paypal.com passes every page that has no PayPal
+ * button on it and then blocks checkout. Going live swaps the sandbox hosts for
+ * their production twins, so the wildcard also survives that switch.
+ *
+ * Every other origin below was taken from the code that loads it, not guessed:
  *   www.paypal.com             CheckoutFlow.tsx (SDK + buttons iframe)
  *   challenges.cloudflare.com  Turnstile.tsx
  *   accounts.google.com        GoogleSignInButton.tsx
@@ -39,10 +52,14 @@ const CSP = [
   // browsers that honour CSP first.
   "frame-ancestors 'self'",
   // Checkout posts to PayPal; nothing else may be a form target.
-  "form-action 'self' https://www.paypal.com",
+  // NOTE: Cashea leaves via `window.location.href = web.cashea.app/checkout`
+  // (confirmed in the SDK bundle). That is a top-level navigation, which no
+  // directive here governs, so it needs no entry.
+  "form-action 'self' https://*.paypal.com",
   [
     "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-    "https://www.paypal.com https://challenges.cloudflare.com",
+    "https://*.paypal.com https://*.paypalobjects.com",
+    "https://challenges.cloudflare.com",
     "https://accounts.google.com https://connect.facebook.net",
     "https://unpkg.com https://static.cloudflareinsights.com",
     "https://www.tiktok.com https://www.instagram.com",
@@ -58,14 +75,18 @@ const CSP = [
     "connect-src 'self'",
     "https://api.indigostores.com https://cdn.indigostores.com",
     "https://static.cloudflareinsights.com",
-    "https://www.paypal.com https://api-m.paypal.com https://api-m.sandbox.paypal.com",
-    "https://accounts.google.com https://connect.facebook.net https://graph.facebook.com",
+    "https://*.paypal.com https://*.paypalobjects.com",
+    // oauth2.googleapis.com is the token endpoint the GSI client calls; it is
+    // referenced only inside accounts.google.com/gsi/client, not in our code.
+    "https://accounts.google.com https://oauth2.googleapis.com",
+    "https://connect.facebook.net https://*.facebook.com",
     "https://external.cashea.app https://challenges.cloudflare.com",
     "https://*.tiktokv.com https://*.tiktokcdn.com",
   ].join(" "),
   [
     "frame-src 'self'",
-    "https://www.paypal.com https://challenges.cloudflare.com",
+    // *.paypal.com, not www: the buttons render from www.sandbox.paypal.com.
+    "https://*.paypal.com https://challenges.cloudflare.com",
     "https://accounts.google.com https://*.facebook.com",
     "https://www.google.com https://www.tiktok.com https://www.instagram.com",
   ].join(" "),
