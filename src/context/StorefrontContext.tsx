@@ -5,6 +5,7 @@ import ratesData from '../lib/rates.json';
 import productsRaw from '../lib/products.json';
 import assetsRaw from '../lib/assets.json';
 import { useAuth } from './AuthContext';
+import { fetchLiveStock, allowedForLine } from '../lib/stock-check';
 
 /**
  * Legacy switch, now OFF.
@@ -199,6 +200,86 @@ export const StorefrontProvider: React.FC<StorefrontProviderProps> = ({
     cartRef.current = next;
     setCartItems(next);
   }, []);
+
+  /*
+    Reconcile the cart against LIVE stock whenever it is opened.
+
+    Every line stores the stock figure that was true when it was added, and the
+    catalogue behind that figure is cached five minutes -- while the cart itself
+    survives in localStorage for days. The clamps in addToCart/updateQuantity
+    are correct but measure against that stale number, which is how quantities
+    ended up above what actually exists.
+
+    Failures are silent and change nothing: `allowedForLine` returns null when
+    there is no live answer, and a backend blip must not empty a basket. It also
+    cannot oversell, because checkout re-verifies server-side before an order
+    exists -- this is about telling the customer the truth early, not about
+    being the enforcement point.
+  */
+  const revalidatingRef = useRef(false);
+  useEffect(() => {
+    if (!isCartOpen || revalidatingRef.current) return;
+    const lines = cartRef.current;
+    if (lines.length === 0) return;
+
+    revalidatingRef.current = true;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const live = await fetchLiveStock(lines.map((i) => String(i.ItemID ?? i.id)));
+        if (cancelled || live.size === 0) return;
+
+        const removed: string[] = [];
+        const reduced: string[] = [];
+        const next = cartRef.current.flatMap((item) => {
+          const variantName =
+            typeof item.variant === 'string'
+              ? item.variant
+              : (item.variant as { variant_name?: string } | null)?.variant_name ?? null;
+          const allowed = allowedForLine(live.get(String(item.ItemID ?? item.id)), variantName);
+          if (allowed === null) return [item];
+          if (allowed <= 0) {
+            removed.push(item.Product || item.name || 'un producto');
+            return [];
+          }
+          if (item.quantity > allowed) {
+            reduced.push(item.Product || item.name || 'un producto');
+            // Keep the true figure on the line so the +/- controls agree.
+            return [{ ...item, quantity: allowed, Stock: allowed }];
+          }
+          return item.Stock === allowed ? [item] : [{ ...item, Stock: allowed }];
+        });
+
+        if (cancelled) return;
+        commitCart(next);
+
+        if (removed.length > 0) {
+          setToast({
+            show: true,
+            message:
+              removed.length === 1
+                ? `${removed[0]} se agotó y lo quitamos de tu carrito`
+                : `${removed.length} productos se agotaron y los quitamos de tu carrito`,
+          });
+          setTimeout(() => setToast(null), 4500);
+        } else if (reduced.length > 0) {
+          setToast({
+            show: true,
+            message:
+              reduced.length === 1
+                ? `Ajustamos la cantidad de ${reduced[0]} a lo que queda disponible`
+                : 'Ajustamos algunas cantidades a lo que queda disponible',
+          });
+          setTimeout(() => setToast(null), 4500);
+        }
+      } finally {
+        revalidatingRef.current = false;
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [isCartOpen, commitCart]);
 
   // Load cart from localStorage after hydration. This is the guest baseline;
   // if a customer is signed in, the merge effect below replaces it with the

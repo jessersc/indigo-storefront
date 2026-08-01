@@ -66,6 +66,44 @@ h1, h2, h3, h4, .bubble-font {
   }
 }
 
+/* ==========================================
+   CART DRAWER
+   ==========================================
+
+   Defined here rather than with `animate-in slide-in-from-right`, which is
+   tailwindcss-animate syntax. That plugin is NOT installed — those classes
+   appear throughout this codebase and emit no CSS at all (grep the built
+   stylesheet: there is no `animate-in` rule). Real keyframes, so the drawer
+   actually slides. */
+@keyframes cart-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes cart-panel-in {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+.cart-overlay-in {
+  animation: cart-overlay-in 0.2s ease-out;
+}
+
+.cart-panel-in {
+  /* Decelerating curve: the panel arrives fast and settles, which reads as
+     responsive rather than sluggish on a phone. */
+  animation: cart-panel-in 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* A drawer flying in from the edge is exactly the motion that triggers
+   vestibular discomfort. Honour the OS setting. */
+@media (prefers-reduced-motion: reduce) {
+  .cart-overlay-in,
+  .cart-panel-in {
+    animation: none;
+  }
+}
+
 /* Floating animation for hero background stars */
 @keyframes float {
   0%, 100% { transform: translateY(0) rotate(0deg); }

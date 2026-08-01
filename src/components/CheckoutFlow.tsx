@@ -1,5 +1,6 @@
 ﻿'use client';
 
+import { saveCheckout, loadCheckout, clearCheckout } from '../lib/checkout-session';
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, ArrowUp, Check, CheckCircle, Clock, Copy, ExternalLink } from 'lucide-react';
 import { useStorefront, type CartItem } from '../context/StorefrontContext';
@@ -111,7 +112,7 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
     () => resolvePaymentMethods(config, assets),
     [config, assets],
   );
-  const { user, token } = useAuth();
+  const { user, token, loading: authLoading } = useAuth();
 
   // Dashboard-editable shipping messages (Settings -> assets). Falls back to
   // the historical copy so the checkout never shows a blank line if the
@@ -130,7 +131,22 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
     to confirm their email before anything else, because for them the order is
     the only record they will have.
   */
-  const [step, setStep] = useState<Step>(() => (user ? 'form' : 'identity'));
+  /*
+    THE AUTH RACE. This used to be `useState(() => user ? 'form' : 'identity')`.
+
+    A lazy initialiser runs exactly once, on the first render -- and on that
+    render AuthProvider is still `loading`, with the JWT sitting in localStorage
+    and /auth/me not yet answered, so `user` is null. A signed-in customer
+    therefore initialised to 'identity' and was asked to log in or continue as a
+    guest, on every reload, while being logged in the whole time. Nothing ever
+    corrected it, because the initialiser never runs again.
+
+    So the decision is deferred until auth has actually settled (see the effect
+    below) rather than guessed on the first paint.
+  */
+  const [step, setStep] = useState<Step>('identity');
+  /** True once the customer has moved past identity under their own steam. */
+  const stepDecidedRef = useRef(false);
   /** Set once a guest has proved control of their address. */
   const [guestToken, setGuestToken] = useState('');
   const guestTokenRef = useRef('');
@@ -197,6 +213,49 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
   });
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  /** True once a saved checkout has been restored, so the notice can be shown. */
+  const [restored, setRestored] = useState(false);
+
+  /*
+    Decide the opening step ONCE auth has settled, and restore any checkout the
+    customer had in progress.
+
+    Order matters here. A signed-in customer never sees the identity gate. A
+    guest who already verified their email in this session does not verify it
+    again -- that was the most annoying part of the reload bug, because the code
+    goes to their inbox and re-requesting it looks broken.
+
+    Only ever moves FORWARD to 'form'. A restored session cannot land on
+    'payment' or 'success': those states mean the server did something, and the
+    server has to say so again, not sessionStorage.
+  */
+  useEffect(() => {
+    if (authLoading || stepDecidedRef.current) return;
+    stepDecidedRef.current = true;
+
+    const saved = loadCheckout();
+    if (saved) {
+      setFormData((prev) => ({ ...prev, ...(saved.formData as Partial<FormData>) }));
+      if (saved.orderNumber) setOrderNumber(saved.orderNumber);
+      setRestored(true);
+    }
+
+    if (user || saved?.identityDone) setStep('form');
+  }, [authLoading, user]);
+
+  /*
+    Persist on every change once past identity. Cheap (one small JSON write) and
+    it means the snapshot is never behind what is on screen -- saving on unload
+    is unreliable on mobile, where the tab is often killed without warning.
+  */
+  useEffect(() => {
+    if (step !== 'form' && step !== 'payment') return;
+    saveCheckout({
+      formData: formData as unknown as Record<string, unknown>,
+      orderNumber,
+      identityDone: Boolean(user) || Boolean(guestTokenRef.current),
+    });
+  }, [step, formData, orderNumber, user]);
 
   // ── Payment Processing State ──
   const [isProcessing, setIsProcessing] = useState(false);
@@ -663,6 +722,9 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
    * gone, and without the snapshot they show an empty order and a $0.00 total.
    */
   const finalizeCart = () => {
+    // The purchase is done, so the resume snapshot must go -- otherwise the
+    // next visit to /checkout reopens this one's address and order number.
+    clearCheckout();
     setOrderedItems(cartItems);
     // Remove only the lines that were actually ordered. Clearing everything
     // would silently throw away whatever the customer deliberately deselected
@@ -1150,6 +1212,17 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
   // ─────────────────────────────────────────────
   // RENDER: Identity Gate (guests only)
   // ─────────────────────────────────────────────
+
+  if (step === 'identity' && authLoading) {
+    // Auth has not settled yet. Showing the gate here is the old bug: a
+    // signed-in customer would be asked to log in for the split second before
+    // /auth/me answers, and the step never corrected itself afterwards.
+    return (
+      <div className="flex items-center justify-center py-24">
+        <div className="w-8 h-8 border-4 border-kawaii-pink border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (step === 'identity') {
     return (
@@ -1667,6 +1740,17 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
           <ArrowLeft size={20} /> Volver
         </button>
       </div>
+
+      {/* Says out loud that the earlier details were kept, so a customer who
+          reloaded does not assume the form is stale and retype it anyway. */}
+      {restored && (
+        <div className="flex items-start gap-3 bg-kawaii-light-pink/15 border border-kawaii-pink/30 rounded-2xl p-4">
+          <Clock size={18} className="text-kawaii-pink flex-shrink-0 mt-0.5" />
+          <p className="text-sm font-semibold text-slate-600">
+            Retomamos tu pedido donde lo dejaste. Revisa que todo esté correcto antes de continuar.
+          </p>
+        </div>
+      )}
 
       {/* 1. Order Summary */}
       <section className="space-y-6">
