@@ -48,12 +48,15 @@ function loadCasheaSdk(): Promise<void> {
   if (sdkPromise) return sdkPromise;
 
   sdkPromise = new Promise<void>((resolve, reject) => {
-    const existing = document.getElementById(SDK_ID);
-    if (existing) {
-      existing.addEventListener('load', () => resolve());
-      existing.addEventListener('error', () => reject(new Error('cashea sdk failed')));
-      return;
-    }
+    /*
+      Any leftover tag is discarded rather than listened to. We only reach here
+      when the global is missing and the cached promise was cleared -- i.e.
+      after a failed load -- so the existing tag has ALREADY fired its terminal
+      event. Attaching `load`/`error` to it waits for something that can never
+      happen again, and the promise hangs forever: the button simply never
+      appears, with no error to explain it.
+    */
+    document.getElementById(SDK_ID)?.remove();
     const script = document.createElement('script');
     script.id = SDK_ID;
     script.src = SDK_SRC;
@@ -86,6 +89,15 @@ interface CasheaPaymentProps {
   cedula: string;
   /** Lines to hand Cashea, so their basket matches ours. */
   items: CasheaLineItem[];
+  /**
+   * False while the bot challenge is still unsolved.
+   *
+   * The order save is rejected without a Turnstile token, so attempting it
+   * early burns the attempt and shows the customer a failure that was only
+   * ever a timing accident -- this component mounts the moment Cashea is
+   * selected, which is usually before the widget has finished.
+   */
+  challengeReady: boolean;
   /** Persists the checkout before Cashea is opened. Idempotent. */
   ensureOrderSaved: () => Promise<boolean>;
   onConfirmed: (transactionId?: string) => void;
@@ -96,6 +108,7 @@ export default function CasheaPayment({
   totalUsd,
   cedula,
   items,
+  challengeReady,
   ensureOrderSaved,
   onConfirmed,
 }: CasheaPaymentProps) {
@@ -105,6 +118,19 @@ export default function CasheaPayment({
   const [busy, setBusy] = useState(false);
   const [buttonReady, setButtonReady] = useState(false);
   const mountedRef = useRef(true);
+
+  /*
+    Which checkout state we have already tried to register.
+
+    This effect depends on callbacks the parent rebuilds on every render, so it
+    re-runs constantly -- and a failed run used to set parent state, which
+    re-rendered the parent, which re-ran the effect. That closed a loop that
+    POSTed /orders without pause; the console showed `failed_challenge`
+    repeating indefinitely. One attempt per distinct checkout, and a retry only
+    when the customer asks for one.
+  */
+  const attemptRef = useRef('');
+  const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -161,6 +187,15 @@ export default function CasheaPayment({
         return;
       }
 
+      // Wait for the challenge rather than spending an attempt that cannot
+      // succeed. The effect re-runs when it flips true.
+      if (!challengeReady) return;
+
+      // One registration per distinct checkout state -- see attemptRef above.
+      const signature = `${orderNumber}|${idNumber}|${totalUsd}|${retryNonce}`;
+      if (attemptRef.current === signature) return;
+      attemptRef.current = signature;
+
       try {
         const cfgRes = await fetch('/api/cashea?action=config');
         const cfg = await cfgRes.json().catch(() => null);
@@ -180,6 +215,9 @@ export default function CasheaPayment({
           return;
         }
         if (cancelled) return;
+        // Past every gate: clear anything left over from an earlier attempt,
+        // so a resolved problem stops being reported as a live one.
+        setError('');
 
         await loadCasheaSdk();
         if (cancelled || !containerRef.current) return;
@@ -263,7 +301,10 @@ export default function CasheaPayment({
 
     void mountButton();
     return () => { cancelled = true; };
-  }, [orderNumber, totalUsd, cedula, items, ensureOrderSaved, verifyWithServer]);
+  }, [
+    orderNumber, totalUsd, cedula, items, challengeReady, retryNonce,
+    ensureOrderSaved, verifyWithServer,
+  ]);
 
   if (configured === false && !error) {
     return (
@@ -315,16 +356,31 @@ export default function CasheaPayment({
             <AlertCircle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
             <p className="text-sm font-semibold text-red-700">{error}</p>
           </div>
-          {/* If Cashea itself is unreachable there is nothing the customer can
-              do on this page, so give them a way to reach a human. */}
-          <a
-            href="https://wa.me/584128503608"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs font-black text-red-700 underline"
-          >
-            Escribenos por WhatsApp <ExternalLink size={12} />
-          </a>
+          {/*
+            Retry is explicit. It used to be automatic -- the effect simply ran
+            again -- which is what let a failure spin into an unbounded POST
+            loop. A button also gives the challenge widget time to reissue a
+            token, which is the usual reason the first attempt failed.
+          */}
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => { setError(''); setRetryNonce((n) => n + 1); }}
+              className="inline-flex items-center gap-1.5 rounded-full bg-red-600 px-4 py-1.5 text-xs font-black text-white"
+            >
+              Reintentar
+            </button>
+            {/* If Cashea itself is unreachable there is nothing the customer can
+                do on this page, so give them a way to reach a human. */}
+            <a
+              href="https://wa.me/584128503608"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-black text-red-700 underline"
+            >
+              Escribenos por WhatsApp <ExternalLink size={12} />
+            </a>
+          </div>
         </div>
       )}
     </div>

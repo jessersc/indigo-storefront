@@ -64,9 +64,21 @@ interface TurnstileProps {
   onToken: (token: string) => void;
   /** Cloudflare's theme for the widget. */
   theme?: 'light' | 'dark' | 'auto';
+  /**
+   * Hands the parent a function that discards the current token and asks
+   * Cloudflare for a fresh one.
+   *
+   * A token is single-use: once the server has verified it, siteverify answers
+   * `timeout-or-duplicate` for every later attempt. Turnstile does NOT refresh
+   * itself after that happens -- it only fires `expired-callback` on its own
+   * ~5 minute timer -- so without this the widget looks solved while holding a
+   * spent token, and the NEXT submission is rejected. Checkout must call this
+   * after each verified request.
+   */
+  registerReset?: (reset: () => void) => void;
 }
 
-export default function Turnstile({ onToken, theme = 'light' }: TurnstileProps) {
+export default function Turnstile({ onToken, theme = 'light', registerReset }: TurnstileProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -76,6 +88,28 @@ export default function Turnstile({ onToken, theme = 'light' }: TurnstileProps) 
   // calling a stale closure.
   const onTokenRef = useRef(onToken);
   onTokenRef.current = onToken;
+
+  // Same reasoning as onTokenRef: the parent re-renders constantly during
+  // checkout and must not re-register on every pass.
+  const registerResetRef = useRef(registerReset);
+  registerResetRef.current = registerReset;
+
+  useEffect(() => {
+    const reset = () => {
+      // Drop the spent token first, so a submission racing the refresh sends
+      // nothing rather than a duplicate -- a missing token is a clean "wait a
+      // moment", a duplicate is a hard 403.
+      onTokenRef.current('');
+      if (widgetIdRef.current && window.turnstile) {
+        try {
+          window.turnstile.reset(widgetIdRef.current);
+        } catch {
+          // Widget already torn down; the next mount issues a fresh token.
+        }
+      }
+    };
+    registerResetRef.current?.(reset);
+  }, []);
 
   useEffect(() => {
     if (!SITE_KEY) return;

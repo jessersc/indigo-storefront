@@ -200,6 +200,11 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
    */
   const [turnstileToken, setTurnstileToken] = useState('');
   /**
+   * Discards the spent token and asks Cloudflare for a new one. Registered by
+   * the widget; a no-op until it has mounted.
+   */
+  const resetTurnstileRef = useRef<() => void>(() => {});
+  /**
    * Secret for the draft this checkout created. Required to convert it into a
    * real order without paying ("pagar despues"), so a stranger who guesses an
    * order number cannot create an order in someone else's name.
@@ -547,15 +552,35 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
       // tick, and state is not visible until the next render.
       guestToken: guestTokenRef.current,
     });
+
+    /*
+      The token is spent now, whatever the outcome: siteverify has seen it, and
+      every later use answers `timeout-or-duplicate`. Ask for a fresh one
+      immediately, or the customer's SECOND order of the session is rejected
+      with failed_challenge while the widget still shows a green tick.
+    */
+    if (turnstileEnabled()) {
+      setTurnstileToken('');
+      resetTurnstileRef.current();
+    }
+
     if (!result.success) {
-      setStockShortfalls(result.shortfalls ?? []);
+      // Only touch this when it actually changes: replacing [] with a fresh []
+      // re-renders, and the payment children re-run their mount effects on the
+      // new callback identities -- which turned one failure into a POST loop.
+      setStockShortfalls((prev) => {
+        const next = result.shortfalls ?? [];
+        return prev.length === 0 && next.length === 0 ? prev : next;
+      });
       setPaymentError(
         result.message ?? 'No pudimos registrar tu pedido. Recarga la pagina e intenta de nuevo.',
       );
       return false;
     }
 
-    setStockShortfalls([]);
+    // Succeeded: drop any message left from an earlier failed attempt.
+    setPaymentError('');
+    setStockShortfalls((prev) => (prev.length === 0 ? prev : []));
     savedOrderRef.current = orderNum;
     setDraftToken(result.draftToken ?? '');
     draftTokenRef.current = result.draftToken ?? '';
@@ -1192,7 +1217,10 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
         */}
         {turnstileEnabled() && (
           <div className="space-y-2">
-            <Turnstile onToken={setTurnstileToken} />
+            <Turnstile
+              onToken={setTurnstileToken}
+              registerReset={(fn) => { resetTurnstileRef.current = fn; }}
+            />
           </div>
         )}
 
@@ -1532,6 +1560,10 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
             // line for line or the customer sees a different order than the one
             // they are paying for.
             items={casheaItems}
+            // Cashea mounts as soon as it is selected, which is normally before
+            // the widget has issued a token. Without this it would register the
+            // order too early, fail the challenge, and show a scary error.
+            challengeReady={!turnstileEnabled() || Boolean(turnstileToken)}
             ensureOrderSaved={() => ensureOrderSaved(orderNumber)}
             onConfirmed={(transactionId) => handlePaymentSuccess('cashea', transactionId)}
           />
