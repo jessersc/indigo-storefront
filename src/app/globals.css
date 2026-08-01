@@ -1,4 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,200..1000;1,200..1000&family=Lilita+One&display=swap');
+/* Nunito and Lilita One are self-hosted by next/font in app/layout.tsx, which
+   sets --font-nunito-src / --font-bubble-src. They used to be pulled from
+   fonts.googleapis.com by an @import here -- render-blocking, and undiscoverable
+   until this stylesheet had been parsed. Do not reinstate that import. */
 @import "tailwindcss";
 
 @theme {
@@ -8,8 +11,10 @@
   --color-kawaii-lavender: #E6E6FA;
   --color-kawaii-yellow: #FFF212;
   --color-kawaii-dark: #373435;
-  --font-nunito: "Nunito", sans-serif;
-  --font-bubble: "Lilita One", cursive;
+  /* next/font generates a hashed family name, so these MUST go through its
+     variables -- a literal "Nunito" no longer resolves to anything. */
+  --font-nunito: var(--font-nunito-src), sans-serif;
+  --font-bubble: var(--font-bubble-src), cursive;
 }
 
 :root {
@@ -95,7 +100,7 @@ h1, h2, h3, h4, .bubble-font {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-family: 'Nunito', sans-serif;
+  font-family: var(--font-nunito);
 }
 
 .dropdown-toggle-ref:hover {
@@ -188,7 +193,7 @@ h1, h2, h3, h4, .bubble-font {
   letter-spacing: 0.3px;
   border-radius: 8px;
   transition: all 0.25s ease;
-  font-family: 'Nunito', sans-serif;
+  font-family: var(--font-nunito);
   cursor: pointer;
   line-height: 1.35;
 }

@@ -177,9 +177,23 @@ export default function StorefrontShell({ children }: StorefrontShellProps) {
             {/* Logo */}
             <div className="flex justify-center items-center flex-shrink-0">
               <Link href="/">
+                {/*
+                  width/height are what stop the header reflowing.
+
+                  The CSS is `h-28 w-auto`, so before the file arrives the
+                  browser knows the height but not the width, and the whole
+                  header row jumps sideways the moment it loads -- on every page,
+                  above the fold, which is the single biggest CLS contributor
+                  here. These attributes let it derive the aspect ratio and
+                  reserve the box up front; the CSS still decides the rendered
+                  size. Both the CDN logo (800x571) and the bundled fallback
+                  (2100x1500) are 1.4:1, so one pair of numbers serves both.
+                */}
                 <img
                   src={logoUrl}
-                  alt="Indigo Store Logo"
+                  alt="Indigo Store"
+                  width={800}
+                  height={571}
                   className="cursor-pointer hover:opacity-80 transition-opacity h-28 w-auto object-contain block m-0 p-0"
                 />
               </Link>

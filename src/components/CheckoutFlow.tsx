@@ -151,6 +151,15 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
   // flow (or retrying after a decline) does not save the same order twice. A
   // ref, not state: ensureOrderSaved reads it in the same tick it writes it.
   const savedOrderRef = useRef<string | null>(null);
+  /**
+   * State mirror of savedOrderRef, purely so children can RENDER against it.
+   *
+   * A ref change does not re-render, and payment children need to know the
+   * order is already registered: past that point ensureOrderSaved short-circuits
+   * and never looks at the bot challenge, so gating them on a token would block
+   * them for a check that no longer applies.
+   */
+  const [savedOrderNumber, setSavedOrderNumber] = useState<string | null>(null);
   // The PayPal SDK keeps the callbacks we hand it for the lifetime of the
   // rendered buttons, so calling ensureOrderSaved directly from there would use
   // whatever form state existed when the buttons mounted. This ref always
@@ -582,6 +591,7 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
     setPaymentError('');
     setStockShortfalls((prev) => (prev.length === 0 ? prev : []));
     savedOrderRef.current = orderNum;
+    setSavedOrderNumber(orderNum);
     setDraftToken(result.draftToken ?? '');
     draftTokenRef.current = result.draftToken ?? '';
     /*
@@ -642,6 +652,7 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
     setStockShortfalls([]);
     setPaymentError('');
     savedOrderRef.current = null;
+    setSavedOrderNumber(null);
     setStep('form');
     scrollToTop();
   };
@@ -1560,10 +1571,20 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
             // line for line or the customer sees a different order than the one
             // they are paying for.
             items={casheaItems}
-            // Cashea mounts as soon as it is selected, which is normally before
-            // the widget has issued a token. Without this it would register the
-            // order too early, fail the challenge, and show a scary error.
-            challengeReady={!turnstileEnabled() || Boolean(turnstileToken)}
+            /*
+              Cashea mounts as soon as it is selected, which is normally before
+              the widget has issued a token -- without this it would register the
+              order too early, fail the challenge, and show a scary error.
+
+              The savedOrderNumber arm matters just as much: registering the
+              order SPENDS the token and clears it, so a gate of "token present"
+              alone goes false again the instant it succeeds, and the button
+              never renders. Once the order exists no challenge is required,
+              because ensureOrderSaved returns before it ever checks.
+            */
+            challengeReady={
+              savedOrderNumber === orderNumber || !turnstileEnabled() || Boolean(turnstileToken)
+            }
             ensureOrderSaved={() => ensureOrderSaved(orderNumber)}
             onConfirmed={(transactionId) => handlePaymentSuccess('cashea', transactionId)}
           />
@@ -1621,6 +1642,7 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
         {showScrollTop && (
           <button
             onClick={scrollToTop}
+            aria-label="Volver arriba"
             className="fixed bottom-8 right-6 z-[1001] bg-[#ff6b9d] hover:bg-[#ff528c] text-white rounded-full w-12 h-12 flex items-center justify-center shadow-[0_4px_15px_rgba(255,107,157,0.3)] transition-all duration-300 cursor-pointer"
           >
             <ArrowUp size={24} />
@@ -2023,6 +2045,7 @@ export default function CheckoutFlow({ totalUsd, totalBs, discountCode, onComple
       {showScrollTop && (
         <button
           onClick={scrollToTop}
+          aria-label="Volver arriba"
           className="fixed bottom-8 right-6 z-[1001] bg-[#ff6b9d] hover:bg-[#ff528c] text-white rounded-full w-12 h-12 flex items-center justify-center shadow-[0_4px_15px_rgba(255,107,157,0.3)] transition-all duration-300 transform scale-100 hover:scale-110 active:scale-95 cursor-pointer animate-in fade-in zoom-in duration-300"
         >
           <ArrowUp size={24} />

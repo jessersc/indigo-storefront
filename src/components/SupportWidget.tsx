@@ -260,7 +260,7 @@ export default function SupportWidget() {
                     placeholder="Escribe tu mensaje..."
                     className="flex-1 px-3 py-2 rounded-full border border-slate-200 outline-none focus:border-kawaii-pink text-sm"
                   />
-                  <button onClick={handleSend} disabled={sending || !input.trim()} className="w-10 h-10 rounded-full bg-kawaii-pink text-white flex items-center justify-center disabled:opacity-50 flex-shrink-0">
+                  <button onClick={handleSend} aria-label="Enviar mensaje" disabled={sending || !input.trim()} className="w-10 h-10 rounded-full bg-kawaii-pink text-white flex items-center justify-center disabled:opacity-50 flex-shrink-0">
                     <Send size={16} />
                   </button>
                 </div>

@@ -40,7 +40,12 @@ import type { NextConfig } from "next";
  *   www.google.com             CheckoutFlow.tsx (Maps embed for the pickup point)
  *   tiktok / instagram         SocialVideos.tsx embeds
  *   static.cloudflareinsights  Web Analytics beacon
- *   fonts.googleapis/gstatic   globals.css @import
+ *   fonts.googleapis/gstatic   NO LONGER used by our own CSS -- next/font
+ *                              self-hosts Nunito and Lilita One, and the built
+ *                              stylesheet has zero references to either host.
+ *                              Kept only because the dashboard's content pages
+ *                              render operator-authored HTML, which could carry
+ *                              a font import. Safe to drop if that stops.
  *   transparenttextures.com    HomeClient.tsx background (covered by img-src https:)
  */
 

@@ -130,6 +130,17 @@ export default function CasheaPayment({
     when the customer asks for one.
   */
   const attemptRef = useRef('');
+  /*
+    Set only while a mount attempt is actually running.
+
+    attemptRef alone was not enough: it was claimed BEFORE the awaits, so a run
+    that got superseded halfway (which happens every time saving the order
+    changes parent state) left the signature claimed with no button on screen,
+    and every later run returned at the guard. The spinner then never cleared.
+    attemptRef is now claimed only once a button really exists; this ref is what
+    stops two attempts overlapping in the meantime.
+  */
+  const inFlightRef = useRef(false);
   const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
@@ -169,8 +180,6 @@ export default function CasheaPayment({
   }, [orderNumber, cedula, onConfirmed]);
 
   useEffect(() => {
-    let cancelled = false;
-
     async function mountButton() {
       // Below the minimum Cashea will refuse the plan, so say so here rather
       // than sending the customer into a flow that cannot complete.
@@ -194,12 +203,12 @@ export default function CasheaPayment({
       // One registration per distinct checkout state -- see attemptRef above.
       const signature = `${orderNumber}|${idNumber}|${totalUsd}|${retryNonce}`;
       if (attemptRef.current === signature) return;
-      attemptRef.current = signature;
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
 
       try {
         const cfgRes = await fetch('/api/cashea?action=config');
         const cfg = await cfgRes.json().catch(() => null);
-        if (cancelled) return;
 
         if (!cfg?.configured || !cfg?.publicApiKey || !cfg?.externalClientId) {
           setConfigured(false);
@@ -214,13 +223,22 @@ export default function CasheaPayment({
           setError('No pudimos registrar tu pedido. Intenta de nuevo.');
           return;
         }
-        if (cancelled) return;
         // Past every gate: clear anything left over from an earlier attempt,
         // so a resolved problem stops being reported as a live one.
         setError('');
 
+        /*
+          Deliberately NOT bailing on `cancelled` from here on.
+
+          Saving the order changes parent state, which supersedes this effect
+          run -- so `cancelled` is true on the normal, successful path, not just
+          when the customer navigates away. Returning here was what left the
+          spinner up forever. containerRef points at the same live DOM node
+          across re-renders, so finishing the render is correct; only state
+          writes need guarding, and those go through mountedRef.
+        */
         await loadCasheaSdk();
-        if (cancelled || !containerRef.current) return;
+        if (!containerRef.current) return;
 
         const SDK = window.WebCheckoutSDK;
         if (!SDK) throw new Error('sdk missing');
@@ -277,6 +295,9 @@ export default function CasheaPayment({
 
         containerRef.current.innerHTML = '';
         sdk.createCheckoutButton({ payload, container: containerRef.current });
+        // Claimed only now that a button genuinely exists, so an attempt that
+        // died partway leaves the next run free to try again.
+        attemptRef.current = signature;
         setButtonReady(true);
 
         // The SDK renders its own button; stretch it to the card width so it
@@ -291,16 +312,17 @@ export default function CasheaPayment({
             });
         }, 100);
       } catch {
-        if (!cancelled) {
+        if (mountedRef.current) {
           setError(
             'No pudimos cargar Cashea. Revisa tu conexion y recarga la pagina, o elige otro metodo de pago.',
           );
         }
+      } finally {
+        inFlightRef.current = false;
       }
     }
 
     void mountButton();
-    return () => { cancelled = true; };
   }, [
     orderNumber, totalUsd, cedula, items, challengeReady, retryNonce,
     ensureOrderSaved, verifyWithServer,
