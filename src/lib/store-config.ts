@@ -99,69 +99,6 @@ function staticFallback(): StoreConfig {
   return { config: {}, assets, rates, videos: fallbackVideos() };
 }
 
-/** How long a resolved TikTok thumbnail is reused. */
-const POSTER_REVALIDATE_SECONDS = 3600;
-
-/**
- * Fill in poster images for embeds that have none.
- *
- * The home page renders its social videos as a poster with a play button, and
- * only builds the real third-party iframe once someone clicks it -- but no row
- * in `social_videos` actually has `poster_url` set, so every frame would be a
- * blank gradient. TikTok's oEmbed endpoint returns a thumbnail for a bare video
- * id, which gives a real preview while still contacting nothing from the
- * browser until the visitor asks to play.
- *
- * Cached for an hour and bounded by a short timeout, so this costs one request
- * per video per hour for the whole site. Every failure mode -- timeout, non-200,
- * malformed JSON, TikTok down -- leaves poster_url untouched and the frame falls
- * back to its gradient. The home page must never depend on TikTok being up.
- *
- * Note the URLs come back SIGNED and do expire, which is the other reason not to
- * persist them; the component also has an onError fallback for one that lapses
- * inside the cache window.
- */
-async function withResolvedPosters(videos: Video[]): Promise<Video[]> {
-  const needed = videos.filter(
-    (v) => v.platform === 'tiktok' && !v.poster_url && v.source,
-  );
-  if (needed.length === 0) return videos;
-
-  const resolved = new Map<string, string>();
-  await Promise.allSettled(
-    // Distinct ids only: the same video is allowed to appear twice.
-    Array.from(new Set(needed.map((v) => v.source))).map(async (source) => {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 2000);
-      try {
-        const url = `https://www.tiktok.com/oembed?url=${encodeURIComponent(
-          `https://www.tiktok.com/@i/video/${source}`,
-        )}`;
-        const res = await fetch(url, {
-          signal: controller.signal,
-          next: { revalidate: POSTER_REVALIDATE_SECONDS },
-        });
-        if (!res.ok) return;
-        const data = (await res.json()) as { thumbnail_url?: unknown };
-        if (typeof data.thumbnail_url === 'string' && data.thumbnail_url.startsWith('https://')) {
-          resolved.set(source, data.thumbnail_url);
-        }
-      } catch {
-        // Leave it unresolved; the gradient placeholder covers it.
-      } finally {
-        clearTimeout(timer);
-      }
-    }),
-  );
-
-  if (resolved.size === 0) return videos;
-  return videos.map((v) =>
-    v.poster_url || !resolved.has(v.source)
-      ? v
-      : { ...v, poster_url: resolved.get(v.source) as string },
-  );
-}
-
 export const getStoreConfig = cache(async (): Promise<StoreConfig> => {
   try {
     const controller = new AbortController();
@@ -181,9 +118,7 @@ export const getStoreConfig = cache(async (): Promise<StoreConfig> => {
       // blanks out the storefront chrome.
       assets: data.assets && data.assets.length > 0 ? data.assets : fallback.assets,
       rates: data.rates ?? fallback.rates,
-      videos: await withResolvedPosters(
-        data.videos && data.videos.length > 0 ? data.videos : fallback.videos,
-      ),
+      videos: data.videos && data.videos.length > 0 ? data.videos : fallback.videos,
     };
   } catch {
     return staticFallback();
