@@ -15,6 +15,14 @@ export interface SearchHit {
   collection?: string | null;
   image: string;
   stock?: number | null;
+  stock_status?: string | null;
+  /**
+   * 1 when the product is sold by model. The results page renders from this
+   * response alone -- it has no catalogue to cross-reference -- so without this
+   * it cannot tell a three-model product from a single one, and every card
+   * offered "SELECCIONAR MODELO".
+   */
+  has_variants?: number | boolean | null;
 }
 
 export async function searchProducts(query: string, limit = 40): Promise<SearchHit[]> {

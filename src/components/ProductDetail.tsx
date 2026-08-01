@@ -49,14 +49,34 @@ export default function ProductDetail({ product, variants, onAddToCart, onChecko
   const [quantity, setQuantity] = useState(hasVariants ? 1 : 1);
   const [selectedVariant, setSelectedVariant] = useState<any | null>(null);
 
+  /*
+    Two different questions, which used to share one answer.
+
+    "How many can I add right now" depends on the CHOSEN variant, and is
+    legitimately 0 before one is picked. "Is this product available at all" does
+    not -- for a product sold by model it is the total across its models.
+
+    Both used to come from rawMaxStock, so on first load a product with three
+    well-stocked variants reported 0 and the badge read AGOTADO until the
+    customer happened to click a model. Llaveros Plush My Hero Academy showed
+    that with 26 units in stock (5 + 17 + 4).
+  */
+  const variantStockTotal = hasVariants
+    ? variants.reduce((sum: number, v: any) => sum + (Number(v.stock_count) || 0), 0)
+    : 0;
+
+  /** Drives the availability badge. Never depends on the selection. */
+  const availableStock = hasVariants ? variantStockTotal : product.Stock;
+
+  /** Drives the quantity stepper: how many of the selected model can be added. */
   const rawMaxStock = hasVariants
     ? (selectedVariant ? selectedVariant.stock_count : 0)
     : product.Stock;
 
   // The operator's override wins over the count for how this is presented, and
   // 'unavailable' / 'out_of_stock' block the sale outright.
-  const stockStatus = resolveStockStatus((product as any).StockStatus, rawMaxStock);
-  const purchasable = isPurchasable((product as any).StockStatus, rawMaxStock);
+  const stockStatus = resolveStockStatus((product as any).StockStatus, availableStock);
+  const purchasable = isPurchasable((product as any).StockStatus, availableStock);
   const maxStock = purchasable ? rawMaxStock : 0;
 
   const displayImage = (selectedVariant && selectedVariant.image_path)
@@ -156,9 +176,11 @@ export default function ProductDetail({ product, variants, onAddToCart, onChecko
               >
                 {STOCK_STATUS_LABELS[stockStatus]}
               </span>
-              {stockStatus === 'low_stock' && rawMaxStock > 0 && (
+              {/* Counts the same stock the badge just judged, or the badge and
+                  the number beside it disagree once a model is selected. */}
+              {stockStatus === 'low_stock' && availableStock > 0 && (
                 <span className="text-xs font-bold text-amber-600">
-                  Quedan {rawMaxStock} unidad{rawMaxStock === 1 ? '' : 'es'}
+                  Quedan {availableStock} unidad{availableStock === 1 ? '' : 'es'}
                 </span>
               )}
               {stockStatus === 'unavailable' && (

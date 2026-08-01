@@ -40,8 +40,15 @@ function SearchContent() {
     let cancelled = false;
     searchProducts(query, 60).then((hits) => {
       if (cancelled) return;
-      // Same mapper the grid uses, so prices match everywhere.
-      setMatchingProducts(hits.map((p) => toDisplayProduct(p as never, rates)));
+      // Same mapper the grid uses, so prices match everywhere. has_variants is
+      // carried alongside it: the mapper's DisplayProduct has no such field, and
+      // this page has no catalogue to look it up in.
+      setMatchingProducts(
+        hits.map((p) => ({
+          ...toDisplayProduct(p as never, rates),
+          HasVariants: Boolean(p.has_variants),
+        })),
+      );
     });
 
     return () => { cancelled = true; };
@@ -156,21 +163,32 @@ function SearchContent() {
                   </div>
                 </div>
 
+                {/*
+                  One or the other, never both -- matching ProductGrid.
+
+                  Every card used to show SELECCIONAR MODELO *and* a direct
+                  add-to-cart. On a single-model product the first was a lie, and
+                  on a multi-model product the second was worse: it put a line in
+                  the cart with no model chosen.
+                */}
                 <div className="mt-auto space-y-3 pt-2 border-t border-slate-50">
-                  <button 
-                    className="w-full py-3 rounded-full border-2 border-kawaii-pink text-kawaii-pink font-black text-[10px] uppercase tracking-[0.15em] hover:bg-kawaii-pink hover:text-white transition-all bubble-font cursor-pointer"
-                  >
-                    SELECCIONAR MODELO
-                  </button>
-                  
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); addToCart(product); }}
-                      className="flex-1 py-3 bg-kawaii-light-pink/20 text-kawaii-pink rounded-full hover:bg-kawaii-pink hover:text-white transition-all flex items-center justify-center cursor-pointer"
+                  {product.HasVariants ? (
+                    <button
+                      className="w-full py-3 rounded-full border-2 border-kawaii-pink text-kawaii-pink font-black text-[10px] uppercase tracking-[0.15em] hover:bg-kawaii-pink hover:text-white transition-all bubble-font cursor-pointer"
                     >
-                      <ShoppingCart size={18} strokeWidth={3} />
+                      SELECCIONAR MODELO
                     </button>
-                  </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); addToCart(product); }}
+                        aria-label={`Agregar ${product.Product} al carrito`}
+                        className="flex-1 py-3 bg-kawaii-light-pink/20 text-kawaii-pink rounded-full hover:bg-kawaii-pink hover:text-white transition-all flex items-center justify-center cursor-pointer"
+                      >
+                        <ShoppingCart size={18} strokeWidth={3} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
