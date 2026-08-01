@@ -1,7 +1,7 @@
 import React from 'react';
 import { Metadata } from 'next';
 import { getStoreConfig } from '../../../lib/store-config';
-import { getCatalog, toDisplayProduct } from '../../../lib/catalog';
+import { getCatalog, getLiveProduct, toDisplayProduct } from '../../../lib/catalog';
 import ProductDetailWrapper from './ProductDetailWrapper';
 
 function parseIdFromSlug(slug: string): string {
@@ -9,16 +9,44 @@ function parseIdFromSlug(slug: string): string {
   return parts[parts.length - 1];
 }
 
-/** Resolves a slug against the live catalog, priced with the live rates. */
+/**
+ * Resolves a slug against the catalog, then overlays LIVE stock and price.
+ *
+ * The catalog fetch is cached for five minutes because it is ~6,000 D1 rows and
+ * its heavy parts -- names, descriptions, images -- effectively never change.
+ * Stock and price do change constantly, and this is the page where being wrong
+ * actually costs something: a customer adding six units of something with one
+ * left, or seeing a price checkout will refuse.
+ *
+ * So those two fields (plus the rates they derive from) come from a small
+ * uncached endpoint instead, about ten rows. The page is then correct on first
+ * load with no dependence on cache invalidation firing, on which admin endpoint
+ * performed the write, or on revalidateTag behaving -- all three of which have
+ * failed silently here before.
+ *
+ * If the live call fails the cached values stand: a five-minute-old price is far
+ * better than a broken page, and checkout re-verifies both anyway.
+ */
 async function getProductBySlug(slug: string) {
   const [{ products, variants }, { rates }] = await Promise.all([getCatalog(), getStoreConfig()]);
   const id = parseIdFromSlug(slug);
   const p = products.find((x) => String(x.id) === id);
   if (!p) return null;
-  return {
-    product: toDisplayProduct(p, rates),
-    variants: variants.filter((v) => String(v.parent_id) === String(p.id)),
-  };
+
+  const live = await getLiveProduct(id);
+  const merged = live
+    ? { ...p, base_price_usd: live.base_price_usd ?? p.base_price_usd, stock: live.stock, stock_status: live.stock_status ?? p.stock_status }
+    : p;
+  const liveRates = live?.rates ?? rates;
+
+  const ownVariants = variants
+    .filter((v) => String(v.parent_id) === String(p.id))
+    .map((v) => {
+      const lv = live?.variants?.find((x) => String(x.id) === String(v.id));
+      return lv ? { ...v, stock_count: lv.stock_count } : v;
+    });
+
+  return { product: toDisplayProduct(merged, liveRates), variants: ownVariants };
 }
 
 interface PageProps {

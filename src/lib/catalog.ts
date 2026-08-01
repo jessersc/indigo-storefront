@@ -29,10 +29,52 @@ const API_URL = process.env.INDIGO_API_URL || 'http://localhost:8787';
  * tells them it is gone; it cannot oversell.
  */
 const REVALIDATE_SECONDS = 300;
+const FETCH_TIMEOUT_MS = 4000;
 
 /** Cache tag dropped by /api/revalidate when the catalogue changes. */
 export const CATALOG_TAG = 'catalog';
-const FETCH_TIMEOUT_MS = 4000;
+
+export interface LiveProduct {
+  id: string;
+  base_price_usd: number | null;
+  stock: number;
+  stock_status: string | null;
+  variants: Array<{ id: string; stock_count: number }>;
+  rates: { bcv_fijo: number; paralelo_fijo: number; bcv_diario: number } | null;
+}
+
+/**
+ * Live stock and price for ONE product. Never cached, anywhere.
+ *
+ * This exists because the catalogue as a whole is cached for five minutes to
+ * stay inside D1's free row allowance, but stock and price cannot wait five
+ * minutes -- that is how a customer ends up adding six units of something with
+ * one left. Fetching just the fields that move costs about ten D1 rows instead
+ * of six thousand.
+ *
+ * Returns null on any failure so the caller keeps its cached values: a slightly
+ * old price beats an error page, and checkout re-verifies both server-side
+ * before an order can exist.
+ *
+ * Wrapped in `cache()` to dedupe within a single request: the product route
+ * calls this from BOTH generateMetadata and the page body, which would
+ * otherwise be two identical uncached round trips per page view.
+ */
+export const getLiveProduct = cache(async (id: string): Promise<LiveProduct | null> => {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(`${API_URL}/catalog/product/${encodeURIComponent(id)}`, {
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    return (await res.json()) as LiveProduct;
+  } catch {
+    return null;
+  }
+});
 
 export interface CatalogProduct {
   id: string;
