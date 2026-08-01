@@ -27,7 +27,7 @@ function authHeaders(token?: string | null): Record<string, string> {
 }
 
 export async function sendChat(
-  input: { threadId?: string; message: string; email?: string; name?: string },
+  input: { threadId?: string; message: string; email?: string; name?: string; turnstileToken?: string },
   token?: string | null,
   // `reply` is null when a human agent has taken the thread over: the bot stays
   // quiet and the agent's answer arrives through polling instead.

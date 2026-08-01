@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { MessageCircle, X, Send, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useStorefront } from '../context/StorefrontContext';
 import {
   getSupportConfig,
   sendChat,
@@ -20,6 +21,7 @@ const THREAD_KEY = 'indigo_support_thread';
 
 export default function SupportWidget() {
   const { user, token } = useAuth();
+  const { isCartOpen } = useStorefront();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>('menu');
   const [config, setConfig] = useState<SupportConfig | null>(null);
@@ -39,6 +41,16 @@ export default function SupportWidget() {
   const [contactSent, setContactSent] = useState(false);
   const [contactError, setContactError] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
+  /*
+    Chat challenge, separate from the contact form's.
+
+    `chatVerified` flips once the Worker has accepted a message, because the
+    Worker records human_verified on the THREAD -- so the widget must stop
+    asking at the same moment the server stops requiring it, or a returning
+    customer stares at a challenge that no longer does anything.
+  */
+  const [chatToken, setChatToken] = useState('');
+  const [chatVerified, setChatVerified] = useState(false);
 
   useEffect(() => {
     if (open && !config) getSupportConfig().then(setConfig).catch(() => setConfig({ whatsappNumber: '', supportEmail: '' }));
@@ -113,14 +125,31 @@ export default function SupportWidget() {
     setMessages([{ from: 'bot', text: 'Hola! Soy el asistente de Indigo. Preguntame sobre pedidos, envios, pagos, reembolsos o reemplazos.' }]);
   };
 
+  /** Anonymous, not yet accepted by the server, and Turnstile is configured. */
+  const chatNeedsChallenge = !user && !chatVerified && turnstileEnabled();
+
   const handleSend = async () => {
     const text = input.trim();
     if (!text || sending) return;
+    if (chatNeedsChallenge && !chatToken) {
+      setMessages((m) => [
+        ...m,
+        { from: 'bot', text: 'Antes de continuar, completa la verificacion de seguridad aqui abajo.' },
+      ]);
+      return;
+    }
     setInput('');
     setMessages((m) => [...m, { from: 'customer', text }]);
     setSending(true);
     try {
-      const res = await sendChat({ threadId, message: text, email: user?.email }, token);
+      const res = await sendChat(
+        { threadId, message: text, email: user?.email, turnstileToken: chatToken },
+        token,
+      );
+      // Accepted: the thread is marked verified server-side, so never challenge
+      // again in this conversation. The token itself is single-use and spent.
+      setChatVerified(true);
+      setChatToken('');
       setThreadId(res.threadId);
       localStorage.setItem(THREAD_KEY, res.threadId);
       // A human has the thread: no bot reply comes back, the agent answers via polling.
@@ -180,6 +209,17 @@ export default function SupportWidget() {
   const whatsappHref = config?.whatsappNumber
     ? `https://wa.me/${config.whatsappNumber}?text=${encodeURIComponent('Hola! Tengo una consulta.')}`
     : '#';
+
+  /*
+    Stand down while the cart drawer is open.
+
+    The launcher is z-[1100] and the drawer is z-[100], so the bubble sat on top
+    of "IR A PAGAR!" -- covering the one control that matters on that screen.
+    Restacking would only move the collision (the drawer would then cover the
+    chat), and nobody opens support by tapping through a checkout button. The
+    panel is closed too, so it does not linger behind the drawer.
+  */
+  if (isCartOpen) return null;
 
   return (
     <>
@@ -249,6 +289,24 @@ export default function SupportWidget() {
                 {sending && <div className="text-xs text-slate-400 font-bold">escribiendo...</div>}
               </div>
               <div className="border-t border-slate-100 p-2">
+                {/*
+                  Anonymous visitors prove they are human ONCE per conversation.
+
+                  A signed-in customer never sees this -- the account is already
+                  the proof. The challenge exists because the AI costs real
+                  Neurons per reply and the per-IP rate limit is trivially
+                  sidestepped with more IPs; Turnstile makes abuse cost per
+                  conversation instead. The Worker enforces it regardless of what
+                  this widget does.
+                */}
+                {chatNeedsChallenge && (
+                  <div className="mb-2 px-1 space-y-1.5">
+                    <p className="text-[11px] font-bold text-slate-400">
+                      Confirma que eres una persona para iniciar el chat:
+                    </p>
+                    <Turnstile onToken={setChatToken} />
+                  </div>
+                )}
                 {threadId && (
                   <button onClick={handleEscalate} className="text-[11px] text-kawaii-pink font-bold mb-1 px-1 hover:underline">Hablar con una persona</button>
                 )}

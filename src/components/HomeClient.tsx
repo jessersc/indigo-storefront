@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense, useMemo } from 'react';
+import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useStorefront } from '../context/StorefrontContext';
 import { NEW_PRODUCT_COUNT, type CatalogProduct, type CatalogVariant } from '../lib/catalog';
@@ -117,6 +117,15 @@ function HomeContent({ products, variants }: HomeContentProps) {
 
   const [currentSlide, setCurrentSlide] = useState(0);
 
+  /** Open the product behind the current hero slide. Shared by the name, the
+   *  photo and the "Seleccionar modelo" button so they cannot drift apart. */
+  const goToHeroProduct = useCallback(() => {
+    const slide = heroSlides[currentSlide];
+    if (!slide?.product?.id) return;
+    router.push(`/product/${toSlug(slide.title, slide.product.id)}`);
+  }, [heroSlides, currentSlide, router, toSlug]);
+
+
   useEffect(() => {
     if (!activePromotion && heroSlides.length > 0) {
       const timer = setInterval(() => {
@@ -153,10 +162,19 @@ function HomeContent({ products, variants }: HomeContentProps) {
               <div className="inline-block bg-white/20 backdrop-blur-md px-5 py-1.5 rounded-full text-white text-[11px] font-black uppercase tracking-[0.3em] border border-white/40 shadow-sm">
                 {heroSlides[currentSlide].tag}
               </div>
+              {/* The name is the product's own link. Customers try this before
+                  they try any button -- it looked like a heading and did
+                  nothing, which reads as broken. */}
               <div key={`title-${currentSlide}`}>
-                <h2 className="text-5xl md:text-7xl font-black text-white tracking-tight drop-shadow-2xl leading-[1.1] bubble-font">
-                  {heroSlides[currentSlide].title}
-                </h2>
+                <button
+                  type="button"
+                  onClick={goToHeroProduct}
+                  className="text-left w-full cursor-pointer group"
+                >
+                  <h2 className="text-5xl md:text-7xl font-black text-white tracking-tight drop-shadow-2xl leading-[1.1] bubble-font group-hover:text-kawaii-yellow transition-colors">
+                    {heroSlides[currentSlide].title}
+                  </h2>
+                </button>
               </div>
             </div>
 
@@ -174,10 +192,7 @@ function HomeContent({ products, variants }: HomeContentProps) {
               <div className="pt-4 flex flex-col sm:flex-row justify-center lg:justify-start gap-4">
                 {heroSlides[currentSlide].hasVariants ? (
                   <button 
-                    onClick={() => {
-                      const slug = toSlug(heroSlides[currentSlide].title, heroSlides[currentSlide].product.id);
-                      router.push(`/product/${slug}`);
-                    }}
+                    onClick={goToHeroProduct}
                     className="bg-white text-kawaii-pink px-8 py-4 rounded-full font-black text-lg uppercase tracking-widest hover:scale-105 transition-all shadow-[0_10px_30px_rgba(0,0,0,0.2)] hover:bg-kawaii-yellow hover:text-kawaii-dark bubble-font cursor-pointer text-center"
                   >
                     SELECCIONAR MODELO
@@ -226,13 +241,24 @@ function HomeContent({ products, variants }: HomeContentProps) {
             <div className="order-2 lg:col-start-2 lg:row-start-1 lg:row-span-2 relative group animate-in fade-in zoom-in-95 duration-700 delay-200">
               <div className="bg-white/10 backdrop-blur-sm rounded-[40px] p-4 border border-white/20 shadow-2xl relative">
                  <div className="aspect-square bg-white rounded-[32px] overflow-hidden relative shadow-inner">
-                    <img 
-                      key={`img-${currentSlide}`}
-                      src={heroSlides[currentSlide].image} 
-                      alt="Featured Product" 
-                      className="w-full h-full object-cover animate-in fade-in zoom-in-95 duration-1000"
-                    />
-                    <div className="absolute bottom-6 right-6 bg-white/90 backdrop-blur-md p-2 rounded-full flex gap-2 shadow-lg border border-white">
+                    {/* Same reasoning as the name: tapping the photo is the most
+                        obvious way to ask for the product, so it has to work.
+                        The arrows below sit above this in the stacking order,
+                        so paging the carousel does not navigate by accident. */}
+                    <button
+                      type="button"
+                      onClick={goToHeroProduct}
+                      aria-label={`Ver ${heroSlides[currentSlide].title}`}
+                      className="absolute inset-0 w-full h-full cursor-pointer"
+                    >
+                      <img
+                        key={`img-${currentSlide}`}
+                        src={heroSlides[currentSlide].image}
+                        alt={heroSlides[currentSlide].title}
+                        className="w-full h-full object-cover"
+                      />
+                    </button>
+                    <div className="absolute bottom-6 right-6 z-10 bg-white/90 backdrop-blur-md p-2 rounded-full flex gap-2 shadow-lg border border-white">
                       <button 
                         onClick={() => setCurrentSlide(prev => (prev - 1 + heroSlides.length) % heroSlides.length)}
                         className="w-10 h-10 bg-kawaii-pink text-white rounded-full flex items-center justify-center hover:bg-kawaii-purple transition-colors shadow-md cursor-pointer font-bold"
